@@ -168,7 +168,7 @@ class MenuBarController: ObservableObject {
             let baselineNudge = -1.0 / scale
 
             // Line 1: Sun + solar value
-            if let sunBase = NSImage(systemSymbolName: "sun.max", accessibilityDescription: nil),
+            if let sunBase = NSImage(systemSymbolName: "sun.min", accessibilityDescription: nil),
                let sun = sunBase.withSymbolConfiguration(symbolConfig) {
                 let sunAttachment = NSTextAttachment()
                 sunAttachment.image = sun
@@ -181,7 +181,7 @@ class MenuBarController: ObservableObject {
             attributed.append(NSAttributedString(string: "\n"))
 
             // Line 2: Battery + percent
-            if let battBase = NSImage(systemSymbolName: "battery.75percent", accessibilityDescription: nil),
+            if let battBase = NSImage(systemSymbolName: "bolt.house", accessibilityDescription: nil),
                let batt = battBase.withSymbolConfiguration(symbolConfig) {
                 let battAttachment = NSTextAttachment()
                 battAttachment.image = batt
@@ -194,6 +194,7 @@ class MenuBarController: ObservableObject {
             let para = NSMutableParagraphStyle()
             para.alignment = .center
             para.lineSpacing = 0
+            para.paragraphSpacing = -2
             let lineH = max(10.5, Double(font.ascender - font.descender + font.leading))
             para.minimumLineHeight = CGFloat(lineH)
             para.maximumLineHeight = CGFloat(lineH)
@@ -232,7 +233,12 @@ class MenuBarController: ObservableObject {
     
     private func formatWatts(_ value: String) -> String {
         if let watts = Double(value) {
-            return String(format: "%.0fw", watts)
+            let formatted = String(format: "%.0f", watts)
+            if formatted.count == 1 {
+                return "\(formatted) W"
+            } else {
+                return "\(formatted)W"
+            }
         }
         return "---"
     }
