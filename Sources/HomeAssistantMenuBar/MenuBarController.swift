@@ -163,19 +163,19 @@ class MenuBarController: ObservableObject {
             // Two stacked lines; keep sizes small to fit menu bar height
             let font = NSFont.systemFont(ofSize: 10, weight: .regular)
             let symbolConfig = NSImage.SymbolConfiguration(pointSize: font.pointSize, weight: .regular)
-            let scale = NSScreen.main?.backingScaleFactor ?? 2.0
-            // A tiny downward nudge to visually center (Retina-safe)
-            let baselineNudge = -1.0 / scale
+            // Calculate proper baseline offset using capHeight for consistent icon alignment
+            let iconSize = font.pointSize
+            let baselineOffset = (font.capHeight - iconSize).rounded() / 2
 
             // Line 1: Sun + solar value
             if let sunBase = NSImage(systemSymbolName: "sun.min", accessibilityDescription: nil),
                let sun = sunBase.withSymbolConfiguration(symbolConfig) {
                 let sunAttachment = NSTextAttachment()
                 sunAttachment.image = sun
-                sunAttachment.bounds = CGRect(x: 0, y: baselineNudge, width: sun.size.width, height: sun.size.height)
+                sunAttachment.bounds = CGRect(x: 0, y: baselineOffset, width: sun.size.width, height: sun.size.height)
                 attributed.append(NSAttributedString(attachment: sunAttachment))
             }
-            attributed.append(NSAttributedString(string: " \(solar)", attributes: [.font: font, .baselineOffset: baselineNudge]))
+            attributed.append(NSAttributedString(string: " \(solar)", attributes: [.font: font]))
 
             // Newline to stack
             attributed.append(NSAttributedString(string: "\n"))
@@ -185,16 +185,16 @@ class MenuBarController: ObservableObject {
                let batt = battBase.withSymbolConfiguration(symbolConfig) {
                 let battAttachment = NSTextAttachment()
                 battAttachment.image = batt
-                battAttachment.bounds = CGRect(x: 0, y: baselineNudge, width: batt.size.width, height: batt.size.height)
+                battAttachment.bounds = CGRect(x: 0, y: baselineOffset, width: batt.size.width, height: batt.size.height)
                 attributed.append(NSAttributedString(attachment: battAttachment))
             }
-            attributed.append(NSAttributedString(string: " \(battery)", attributes: [.font: font, .baselineOffset: baselineNudge]))
+            attributed.append(NSAttributedString(string: " \(battery)", attributes: [.font: font]))
 
-            // Center both lines; pin line heights to fit status bar
+            // Left-align both lines with proper line spacing control
             let para = NSMutableParagraphStyle()
-            para.alignment = .center
+            para.alignment = .left
             para.lineSpacing = 0
-            para.paragraphSpacing = -2
+            para.lineHeightMultiple = 0.85  // Reduces line spacing instead of negative paragraphSpacing
             let lineH = max(10.5, Double(font.ascender - font.descender + font.leading))
             para.minimumLineHeight = CGFloat(lineH)
             para.maximumLineHeight = CGFloat(lineH)

@@ -19,9 +19,10 @@ final class StatusItemContentView: NSView {
         addSubview(label)
         label.translatesAutoresizingMaskIntoConstraints = false
 
-        // Center label in the available status bar height
+        // Left-align label for consistent icon positioning
         NSLayoutConstraint.activate([
-            label.centerXAnchor.constraint(equalTo: centerXAnchor),
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
+            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
             label.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
     }
