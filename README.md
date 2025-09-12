@@ -4,7 +4,7 @@ A macOS menu bar application that displays solar power generation and battery st
 
 ## Features
 
-- **Menu Bar Display**: Shows solar watts (⚡️) and battery SOC (🔋) in the menu bar
+- **Menu Bar Display**: Shows solar watts and battery SOC with SF Symbols in the menu bar
 - **Auto-refresh**: Configurable refresh interval (default 30 seconds)
 - **Settings UI**: Easy configuration of Home Assistant connection and entity IDs
 - **First-run Setup**: Automatically opens settings on first launch
@@ -53,15 +53,15 @@ When you first run the app, the settings window will open automatically. You'll 
 
 ## Display Format
 
-The menu bar shows a stacked display similar to iStat Menus:
+The menu bar shows a stacked display similar to iStat Menus using SF Symbols:
 
 ```
-⚡️ 1250w
-🔋 85%
+☀️ 1250w
+🏠 85%
 ```
 
-- ⚡️ indicates solar power generation in watts  
-- 🔋 indicates battery state of charge as percentage  
+- ☀️ (sun.min SF Symbol) indicates solar power generation in watts  
+- 🏠 (bolt.house SF Symbol) indicates battery state of charge as percentage  
 - Values are displayed vertically stacked for compact, easy reading
 
 ## Troubleshooting
