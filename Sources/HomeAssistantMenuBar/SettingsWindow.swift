@@ -33,8 +33,8 @@ struct SettingsView: View {
     @ObservedObject private var settings = Settings.shared
     @State private var homeAssistantURL: String = ""
     @State private var accessToken: String = ""
-    @State private var solarEntityId: String = ""
-    @State private var batteryEntityId: String = ""
+    @State private var entityIds: [EntityType: String] = [:]
+    @State private var selectedEntityTypes: Set<EntityType> = []
     @State private var refreshInterval: Double = 30.0
     @State private var isTestingConnection = false
     @State private var testResult: String? = nil
@@ -42,41 +42,99 @@ struct SettingsView: View {
     @State private var alertMessage = ""
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text("Home Assistant Configuration")
-                .font(.title2)
-                .fontWeight(.bold)
-                .padding(.bottom, 10)
-            
-            VStack(alignment: .leading, spacing: 12) {
-                Group {
-                    Text("Home Assistant URL:")
-                    TextField("http://homeassistant.local:8123", text: $homeAssistantURL)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .onTapGesture {
-                            // Ensure text field can receive focus
-                        }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 25) {
+                Text("Home Assistant Configuration")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .padding(.bottom, 10)
+                
+                // Connection Section
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Connection Settings")
+                        .font(.headline)
+                        .foregroundColor(.primary)
                     
-                    Text("Long-lived Access Token:")
-                    TextField("Your access token", text: $accessToken)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .onTapGesture {
-                            // Ensure text field can receive focus
-                        }
+                    Group {
+                        Text("Home Assistant URL:")
+                        TextField("http://homeassistant.local:8123", text: $homeAssistantURL)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                        
+                        Text("Long-lived Access Token:")
+                        TextField("Your access token", text: $accessToken)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                    }
+                }
+                
+                // Entity Configuration Section
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Entity Configuration")
+                        .font(.headline)
+                        .foregroundColor(.primary)
                     
-                    Text("Solar Power Entity ID:")
-                    TextField("sensor.solar_power", text: $solarEntityId)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .onTapGesture {
-                            // Ensure text field can receive focus
-                        }
+                    Text("Configure the entity IDs for all sensors:")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                     
-                    Text("Battery SOC Entity ID:")
-                    TextField("sensor.battery_soc", text: $batteryEntityId)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .onTapGesture {
-                            // Ensure text field can receive focus
+                    ForEach(EntityType.allCases, id: \.self) { entityType in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("\(entityType.displayName) Entity ID:")
+                            TextField(entityType.defaultEntityId, text: Binding(
+                                get: { entityIds[entityType] ?? "" },
+                                set: { entityIds[entityType] = $0 }
+                            ))
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
                         }
+                    }
+                }
+                
+                // Menu Bar Display Section
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Menu Bar Display")
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                    
+                    Text("Select exactly 2 entities to display in the menu bar:")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(EntityType.allCases, id: \.self) { entityType in
+                            HStack {
+                                Toggle("", isOn: Binding(
+                                    get: { selectedEntityTypes.contains(entityType) },
+                                    set: { isSelected in
+                                        if isSelected {
+                                            if selectedEntityTypes.count < 2 {
+                                                selectedEntityTypes.insert(entityType)
+                                            }
+                                        } else {
+                                            selectedEntityTypes.remove(entityType)
+                                        }
+                                    }
+                                ))
+                                .disabled(selectedEntityTypes.count >= 2 && !selectedEntityTypes.contains(entityType))
+                                .frame(width: 20)
+                                
+                                Text(entityType.displayName)
+                                Spacer()
+                            }
+                        }
+                    }
+                    .padding(.leading, 10)
+                    
+                    if selectedEntityTypes.count != 2 {
+                        Text("Select exactly 2 entities (\(selectedEntityTypes.count)/2 selected)")
+                            .font(.caption)
+                            .foregroundColor(.red)
+                    }
+                }
+                
+                // Refresh Settings
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Refresh Settings")
+                        .font(.headline)
+                        .foregroundColor(.primary)
                     
                     Text("Refresh Interval (seconds):")
                     HStack {
@@ -85,51 +143,52 @@ struct SettingsView: View {
                             .frame(width: 40)
                     }
                 }
-            }
-            
-            HStack {
-                Button("Test Connection") {
-                    testConnection()
-                }
-                .disabled(isTestingConnection || homeAssistantURL.isEmpty || accessToken.isEmpty)
                 
-                if isTestingConnection {
-                    ProgressView()
-                        .scaleEffect(0.5)
+                // Connection Test
+                HStack {
+                    Button("Test Connection") {
+                        testConnection()
+                    }
+                    .disabled(isTestingConnection || homeAssistantURL.isEmpty || accessToken.isEmpty)
+                    
+                    if isTestingConnection {
+                        ProgressView()
+                            .scaleEffect(0.5)
+                    }
+                    
+                    if let result = testResult {
+                        Text(result)
+                            .foregroundColor(result.contains("Success") ? .green : .red)
+                    }
                 }
                 
-                if let result = testResult {
-                    Text(result)
-                        .foregroundColor(result.contains("Success") ? .green : .red)
-                }
-            }
-            
-            Spacer()
-            
-            HStack {
                 Spacer()
                 
-                Button("Cancel") {
-                    loadCurrentSettings()
-                    closeWindow()
-                }
-                
-                Button("Save") {
-                    saveSettings()
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(homeAssistantURL.isEmpty || accessToken.isEmpty || solarEntityId.isEmpty || batteryEntityId.isEmpty)
-                
-                // Debug info
-                if homeAssistantURL.isEmpty || accessToken.isEmpty || solarEntityId.isEmpty || batteryEntityId.isEmpty {
-                    Text("(Fill all fields)")
-                        .font(.caption)
-                        .foregroundColor(.red)
+                // Action buttons
+                HStack {
+                    Spacer()
+                    
+                    Button("Cancel") {
+                        loadCurrentSettings()
+                        closeWindow()
+                    }
+                    
+                    Button("Save") {
+                        saveSettings()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!isValidConfiguration)
+                    
+                    if !isValidConfiguration {
+                        Text("(Complete all fields and select 2 entities)")
+                            .font(.caption)
+                            .foregroundColor(.red)
+                    }
                 }
             }
         }
         .padding(20)
-        .frame(width: 500, height: 500)
+        .frame(width: 550, height: 700)
         .onAppear {
             loadCurrentSettings()
         }
@@ -140,26 +199,47 @@ struct SettingsView: View {
         }
     }
     
+    private var isValidConfiguration: Bool {
+        return !homeAssistantURL.isEmpty && 
+               !accessToken.isEmpty && 
+               selectedEntityTypes.count == 2 &&
+               entityIds.allSatisfy { !$0.value.isEmpty }
+    }
+    
     private func loadCurrentSettings() {
         homeAssistantURL = settings.homeAssistantURL ?? ""
         accessToken = settings.accessToken
-        solarEntityId = settings.solarEntityId
-        batteryEntityId = settings.batteryEntityId
         refreshInterval = settings.refreshInterval
+        
+        // Load all entity IDs
+        for entityType in EntityType.allCases {
+            entityIds[entityType] = settings.getEntityId(for: entityType)
+        }
+        
+        // Load selected entity types
+        selectedEntityTypes = Set(settings.selectedEntityTypes)
     }
     
     private func saveSettings() {
         print("💾 Saving settings...")
         print("🏠 URL: \(homeAssistantURL)")
         print("🔑 Token: \(accessToken.prefix(10))...")
-        print("⚡️ Solar: \(solarEntityId)")
-        print("🔋 Battery: \(batteryEntityId)")
         
         settings.homeAssistantURL = homeAssistantURL.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.accessToken = accessToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        settings.solarEntityId = solarEntityId.trimmingCharacters(in: .whitespacesAndNewlines)
-        settings.batteryEntityId = batteryEntityId.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.refreshInterval = refreshInterval
+        
+        // Save all entity IDs
+        for entityType in EntityType.allCases {
+            if let entityId = entityIds[entityType] {
+                settings.setEntityId(for: entityType, entityId: entityId.trimmingCharacters(in: .whitespacesAndNewlines))
+                print("🏷️ \(entityType.displayName): \(entityId)")
+            }
+        }
+        
+        // Save selected entity types
+        settings.selectedEntityTypes = Array(selectedEntityTypes)
+        print("📊 Selected entities: \(selectedEntityTypes.map { $0.displayName }.joined(separator: ", "))")
         
         print("✅ Settings saved to UserDefaults")
         print("⚙️ Settings now configured: \(settings.isConfigured)")

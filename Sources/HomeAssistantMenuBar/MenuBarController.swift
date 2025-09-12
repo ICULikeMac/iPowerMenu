@@ -8,8 +8,7 @@ class MenuBarController: ObservableObject {
     private let homeAssistantClient = HomeAssistantClient()
     private var refreshTimer: Timer?
     
-    @Published var solarWatts: String = "---"
-    @Published var batterySOC: String = "---"
+    @Published var entityValues: [EntityType: String] = [:]
     @Published var connectionStatus: ConnectionStatus = .disconnected
     
     enum ConnectionStatus {
@@ -39,8 +38,11 @@ class MenuBarController: ObservableObject {
     private func setupMenuBar() {
         let menu = NSMenu()
         
-        menu.addItem(withTitle: "Solar: --- watts", action: nil, keyEquivalent: "")
-        menu.addItem(withTitle: "Battery: ---%", action: nil, keyEquivalent: "")
+        // Add menu items for all configured entities (not just displayed ones)
+        for entityType in EntityType.allCases {
+            menu.addItem(withTitle: "\(entityType.displayName): ---", action: nil, keyEquivalent: "")
+        }
+        
         menu.addItem(NSMenuItem.separator())
         let refreshItem = menu.addItem(withTitle: "Refresh Now", action: #selector(refreshNow), keyEquivalent: "r")
         refreshItem.target = self
@@ -63,7 +65,13 @@ class MenuBarController: ObservableObject {
         }
         statusItem.view = view
         contentView = view
-        updateMenuBarTitle(solar: "---", battery: "---%")
+        
+        // Initialize entity values
+        for entityType in EntityType.allCases {
+            entityValues[entityType] = "---"
+        }
+        
+        updateMenuBarTitle()
     }
     
     @objc private func statusItemClicked() {
@@ -117,24 +125,35 @@ class MenuBarController: ObservableObject {
     private func refreshData() {
         print("🔄 Starting data refresh...")
         print("🏠 HA URL: \(Settings.shared.homeAssistantURL ?? "nil")")
-        print("⚡️ Solar Entity: \(Settings.shared.solarEntityId)")
-        print("🔋 Battery Entity: \(Settings.shared.batteryEntityId)")
+        
+        // Create entity configs for all entity types
+        let allEntityConfigs = EntityType.allCases.map { type in
+            EntityConfig(type: type, entityId: Settings.shared.getEntityId(for: type))
+        }
+        print("📊 All entities: \(allEntityConfigs.map { "\($0.displayName): \($0.entityId)" }.joined(separator: ", "))")
         
         Task {
             do {
-                print("📡 Fetching solar data...")
-                let solarData = try await homeAssistantClient.getEntityState(entityId: Settings.shared.solarEntityId)
-                print("⚡️ Solar data received: \(solarData.state)")
+                var newValues: [EntityType: String] = [:]
                 
-                print("📡 Fetching battery data...")
-                let batteryData = try await homeAssistantClient.getEntityState(entityId: Settings.shared.batteryEntityId)
-                print("🔋 Battery data received: \(batteryData.state)")
+                // Fetch data for all entities
+                for entityConfig in allEntityConfigs {
+                    print("📡 Fetching \(entityConfig.displayName) data...")
+                    let entityData = try await homeAssistantClient.getEntityState(entityId: entityConfig.entityId)
+                    print("📊 \(entityConfig.displayName) data received: \(entityData.state)")
+                    
+                    let formattedValue = formatValue(entityData.state, unitType: entityConfig.unitType)
+                    newValues[entityConfig.type] = formattedValue
+                }
                 
                 await MainActor.run {
-                    self.solarWatts = formatWatts(solarData.state)
-                    self.batterySOC = formatPercentage(batteryData.state)
+                    // Update entity values
+                    for (entityType, value) in newValues {
+                        self.entityValues[entityType] = value
+                    }
+                    
                     self.connectionStatus = .connected
-                    print("✅ Formatted values - Solar: \(self.solarWatts), Battery: \(self.batterySOC)")
+                    print("✅ All entity values updated: \(newValues)")
                     self.updateMenuBar()
                     print("🎯 Menu bar updated")
                 }
@@ -149,56 +168,61 @@ class MenuBarController: ObservableObject {
     }
     
     private func updateMenuBarForNoConnection() {
-        updateMenuBarTitle(solar: "---", battery: "---")
+        // Reset all entity values
+        for entityType in EntityType.allCases {
+            entityValues[entityType] = "---"
+        }
+        
+        updateMenuBarTitle()
         
         if let menu = statusItem.menu {
-            menu.item(at: 0)?.title = "Solar: Not configured"
-            menu.item(at: 1)?.title = "Battery: Not configured"
+            for (index, entityType) in EntityType.allCases.enumerated() {
+                menu.item(at: index)?.title = "\(entityType.displayName): Not configured"
+            }
         }
     }
     
-    private func updateMenuBarTitle(solar: String, battery: String) {
+    private func updateMenuBarTitle() {
         let attributed = NSMutableAttributedString()
+        let displayedEntities = Settings.shared.displayedEntityConfigs
 
-            // Two stacked lines; keep sizes small to fit menu bar height
-            let font = NSFont.systemFont(ofSize: 10, weight: .regular)
-            let symbolConfig = NSImage.SymbolConfiguration(pointSize: font.pointSize, weight: .regular)
-            // Calculate proper baseline offset using capHeight for consistent icon alignment
-            let iconSize = font.pointSize
-            let baselineOffset = (font.capHeight - iconSize).rounded() / 2
+        // Two stacked lines; keep sizes small to fit menu bar height
+        let font = NSFont.systemFont(ofSize: 10, weight: .regular)
+        let symbolConfig = NSImage.SymbolConfiguration(pointSize: font.pointSize, weight: .regular)
+        // Calculate proper baseline offset using capHeight for consistent icon alignment
+        let iconSize = font.pointSize
+        let baselineOffset = (font.capHeight - iconSize).rounded() / 2
 
-            // Line 1: Sun + solar value
-            if let sunBase = NSImage(systemSymbolName: "sun.min", accessibilityDescription: nil),
-               let sun = sunBase.withSymbolConfiguration(symbolConfig) {
-                let sunAttachment = NSTextAttachment()
-                sunAttachment.image = sun
-                sunAttachment.bounds = CGRect(x: 0, y: baselineOffset, width: sun.size.width, height: sun.size.height)
-                attributed.append(NSAttributedString(attachment: sunAttachment))
+        // Build menu bar title with selected entities
+        for (index, entityConfig) in displayedEntities.enumerated() {
+            // Add icon
+            if let iconBase = NSImage(systemSymbolName: entityConfig.sfSymbolName, accessibilityDescription: nil),
+               let icon = iconBase.withSymbolConfiguration(symbolConfig) {
+                let iconAttachment = NSTextAttachment()
+                iconAttachment.image = icon
+                iconAttachment.bounds = CGRect(x: 0, y: baselineOffset, width: icon.size.width, height: icon.size.height)
+                attributed.append(NSAttributedString(attachment: iconAttachment))
             }
-            attributed.append(NSAttributedString(string: " \(solar)", attributes: [.font: font]))
+            
+            // Add value
+            let value = entityValues[entityConfig.type] ?? "---"
+            attributed.append(NSAttributedString(string: " \(value)", attributes: [.font: font]))
 
-            // Newline to stack
-            attributed.append(NSAttributedString(string: "\n"))
-
-            // Line 2: Battery + percent
-            if let battBase = NSImage(systemSymbolName: "bolt.house", accessibilityDescription: nil),
-               let batt = battBase.withSymbolConfiguration(symbolConfig) {
-                let battAttachment = NSTextAttachment()
-                battAttachment.image = batt
-                battAttachment.bounds = CGRect(x: 0, y: baselineOffset, width: batt.size.width, height: batt.size.height)
-                attributed.append(NSAttributedString(attachment: battAttachment))
+            // Add newline between entities (but not after the last one)
+            if index < displayedEntities.count - 1 {
+                attributed.append(NSAttributedString(string: "\n"))
             }
-            attributed.append(NSAttributedString(string: " \(battery)", attributes: [.font: font]))
+        }
 
-            // Left-align both lines with proper line spacing control
-            let para = NSMutableParagraphStyle()
-            para.alignment = .left
-            para.lineSpacing = 0
-            para.lineHeightMultiple = 0.85  // Reduces line spacing instead of negative paragraphSpacing
-            let lineH = max(10.5, Double(font.ascender - font.descender + font.leading))
-            para.minimumLineHeight = CGFloat(lineH)
-            para.maximumLineHeight = CGFloat(lineH)
-            attributed.addAttribute(.paragraphStyle, value: para, range: NSRange(location: 0, length: attributed.length))
+        // Left-align both lines with proper line spacing control
+        let para = NSMutableParagraphStyle()
+        para.alignment = .left
+        para.lineSpacing = 0
+        para.lineHeightMultiple = 0.85  // Reduces line spacing instead of negative paragraphSpacing
+        let lineH = max(10.5, Double(font.ascender - font.descender + font.leading))
+        para.minimumLineHeight = CGFloat(lineH)
+        para.maximumLineHeight = CGFloat(lineH)
+        attributed.addAttribute(.paragraphStyle, value: para, range: NSRange(location: 0, length: attributed.length))
 
         if let view = contentView {
             view.setAttributedTitle(attributed)
@@ -211,24 +235,60 @@ class MenuBarController: ObservableObject {
     
     
     private func updateMenuBar() {
-        updateMenuBarTitle(solar: solarWatts, battery: batterySOC)
+        updateMenuBarTitle()
         
         if let menu = statusItem.menu {
-            menu.item(at: 0)?.title = "Solar: \(solarWatts) watts"
-            menu.item(at: 1)?.title = "Battery: \(batterySOC)"
+            // Update all entity menu items
+            for (index, entityType) in EntityType.allCases.enumerated() {
+                let value = entityValues[entityType] ?? "---"
+                let displayName = getDisplayName(for: entityType, value: value)
+                menu.item(at: index)?.title = "\(displayName): \(value)"
+            }
             
             let statusText = connectionStatus == .connected ? "✅ Connected" : 
                            connectionStatus == .error ? "❌ Connection Error" : "⚠️ Disconnected"
             
-            // Update or add status item at index 2 (after the separator)
-            if menu.numberOfItems > 3 {
-                menu.item(at: 3)?.title = "Status: \(statusText)"
+            // Status item is after the entities and separator (index = entityCount + 1)
+            let statusIndex = EntityType.allCases.count + 1
+            if menu.numberOfItems > statusIndex {
+                menu.item(at: statusIndex)?.title = "Status: \(statusText)"
             } else {
-                menu.insertItem(withTitle: "Status: \(statusText)", action: nil, keyEquivalent: "", at: 3)
+                menu.insertItem(withTitle: "Status: \(statusText)", action: nil, keyEquivalent: "", at: statusIndex)
             }
             
-            print("📋 Menu updated - Solar: \(solarWatts), Battery: \(batterySOC), Status: \(statusText)")
+            let displayedEntities = Settings.shared.displayedEntityConfigs
+            let entitySummary = displayedEntities.map { "\($0.displayName): \(entityValues[$0.type] ?? "---")" }.joined(separator: ", ")
+            print("📋 Menu updated - \(entitySummary), Status: \(statusText)")
         }
+    }
+    
+    private func formatValue(_ value: String, unitType: UnitType) -> String {
+        switch unitType {
+        case .watts:
+            return formatWatts(value)
+        case .percentage:
+            return formatPercentage(value)
+        }
+    }
+    
+    private func getDisplayName(for entityType: EntityType, value: String) -> String {
+        if entityType == .gridUsage {
+            // For grid usage, show "Grid Export" if the value is negative (indicating export)
+            if let numericValue = extractNumericValue(from: value), numericValue < 0 {
+                return "Grid Export"
+            } else {
+                return "Grid Usage"
+            }
+        }
+        return entityType.displayName
+    }
+    
+    private func extractNumericValue(from formattedValue: String) -> Double? {
+        // Extract numeric value from formatted strings like "1250W", "-500W", "85%", etc.
+        let cleanedValue = formattedValue.replacingOccurrences(of: "W", with: "")
+                                      .replacingOccurrences(of: "%", with: "")
+                                      .trimmingCharacters(in: .whitespaces)
+        return Double(cleanedValue)
     }
     
     private func formatWatts(_ value: String) -> String {
