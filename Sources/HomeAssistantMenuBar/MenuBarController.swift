@@ -126,18 +126,24 @@ class MenuBarController: ObservableObject {
         print("🔄 Starting data refresh...")
         print("🏠 HA URL: \(Settings.shared.homeAssistantURL ?? "nil")")
         
-        // Create entity configs for all entity types
-        let allEntityConfigs = EntityType.allCases.map { type in
-            EntityConfig(type: type, entityId: Settings.shared.getEntityId(for: type))
+        // Create entity configs for ALL configured entities (for fetching)
+        let allConfiguredEntities = EntityType.allCases.compactMap { type in
+            let entityId = Settings.shared.getEntityId(for: type)
+            return entityId.isEmpty ? nil : EntityConfig(type: type, entityId: entityId)
         }
-        print("📊 All entities: \(allEntityConfigs.map { "\($0.displayName): \($0.entityId)" }.joined(separator: ", "))")
+        
+        // Get the selected entities for display purposes
+        let displayedEntities = Settings.shared.displayedEntityConfigs
+        
+        print("📊 All configured entities: \(allConfiguredEntities.map { "\($0.displayName): \($0.entityId)" }.joined(separator: ", "))")
+        print("🖥️ Displayed entities: \(displayedEntities.map { "\($0.displayName): \($0.entityId)" }.joined(separator: ", "))")
         
         Task {
             do {
                 var newValues: [EntityType: String] = [:]
                 
-                // Fetch data for all entities
-                for entityConfig in allEntityConfigs {
+                // Fetch data for ALL configured entities
+                for entityConfig in allConfiguredEntities {
                     print("📡 Fetching \(entityConfig.displayName) data...")
                     let entityData = try await homeAssistantClient.getEntityState(entityId: entityConfig.entityId)
                     print("📊 \(entityConfig.displayName) data received: \(entityData.state)")
@@ -258,7 +264,9 @@ class MenuBarController: ObservableObject {
             
             let displayedEntities = Settings.shared.displayedEntityConfigs
             let entitySummary = displayedEntities.map { "\($0.displayName): \(entityValues[$0.type] ?? "---")" }.joined(separator: ", ")
-            print("📋 Menu updated - \(entitySummary), Status: \(statusText)")
+            let allEntitySummary = EntityType.allCases.map { "\($0.displayName): \(entityValues[$0] ?? "---")" }.joined(separator: ", ")
+            print("📋 Menu bar display - \(entitySummary)")
+            print("📋 All entities - \(allEntitySummary), Status: \(statusText)")
         }
     }
     

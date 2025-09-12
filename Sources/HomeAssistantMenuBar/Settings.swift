@@ -131,10 +131,17 @@ class Settings: ObservableObject {
     }
     
     var isConfigured: Bool {
-        return homeAssistantURL != nil && !accessToken.isEmpty && 
-               !solarEntityId.isEmpty && !batteryEntityId.isEmpty &&
-               !gridUsageEntityId.isEmpty && !homePowerEntityId.isEmpty &&
-               selectedEntityTypes.count == 2
+        // Basic requirements
+        guard homeAssistantURL != nil && !accessToken.isEmpty else { return false }
+        guard selectedEntityTypes.count == 2 else { return false }
+        
+        // Only check if SELECTED entities have valid IDs
+        for entityType in selectedEntityTypes {
+            if getEntityId(for: entityType).isEmpty {
+                return false
+            }
+        }
+        return true
     }
     
     func getEntityId(for type: EntityType) -> String {
@@ -156,9 +163,17 @@ class Settings: ObservableObject {
     }
     
     var displayedEntityConfigs: [EntityConfig] {
-        return selectedEntityTypes.map { type in
-            EntityConfig(type: type, entityId: getEntityId(for: type))
+        // Return entities in order: top first, then bottom
+        var configs: [EntityConfig] = []
+        if selectedEntityTypes.count >= 1 {
+            let topEntity = selectedEntityTypes[0]
+            configs.append(EntityConfig(type: topEntity, entityId: getEntityId(for: topEntity)))
         }
+        if selectedEntityTypes.count >= 2 {
+            let bottomEntity = selectedEntityTypes[1]
+            configs.append(EntityConfig(type: bottomEntity, entityId: getEntityId(for: bottomEntity)))
+        }
+        return configs
     }
     
     func reset() {

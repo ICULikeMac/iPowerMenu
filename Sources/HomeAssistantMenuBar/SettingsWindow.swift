@@ -10,7 +10,7 @@ class SettingsWindow: NSWindowController {
             defer: false
         )
         
-        window.title = "Home Assistant Settings"
+        window.title = "iPowerMenu Settings"
         window.center()
         window.isReleasedWhenClosed = false
         
@@ -34,7 +34,8 @@ struct SettingsView: View {
     @State private var homeAssistantURL: String = ""
     @State private var accessToken: String = ""
     @State private var entityIds: [EntityType: String] = [:]
-    @State private var selectedEntityTypes: Set<EntityType> = []
+    @State private var topEntity: EntityType? = nil
+    @State private var bottomEntity: EntityType? = nil
     @State private var refreshInterval: Double = 30.0
     @State private var isTestingConnection = false
     @State private var testResult: String? = nil
@@ -44,123 +45,174 @@ struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 25) {
-                Text("Home Assistant Configuration")
+                Text("iPowerMenu Settings")
                     .font(.title2)
                     .fontWeight(.bold)
                     .padding(.bottom, 10)
                 
-                // Connection Section
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Connection Settings")
-                        .font(.headline)
-                        .foregroundColor(.primary)
-                    
-                    Group {
-                        Text("Home Assistant URL:")
-                        TextField("http://homeassistant.local:8123", text: $homeAssistantURL)
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
-                        
-                        Text("Long-lived Access Token:")
-                        TextField("Your access token", text: $accessToken)
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                // Home Assistant Configuration Section
+                VStack(alignment: .leading, spacing: 15) {
+                    HStack {
+                        Image(systemName: "server.rack")
+                            .foregroundColor(.blue)
+                        Text("Home Assistant Configuration")
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primary)
                     }
-                }
-                
-                // Entity Configuration Section
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Entity Configuration")
-                        .font(.headline)
-                        .foregroundColor(.primary)
                     
-                    Text("Configure the entity IDs for all sensors:")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    ForEach(EntityType.allCases, id: \.self) { entityType in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("\(entityType.displayName) Entity ID:")
-                            TextField(entityType.defaultEntityId, text: Binding(
-                                get: { entityIds[entityType] ?? "" },
-                                set: { entityIds[entityType] = $0 }
-                            ))
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                    VStack(alignment: .leading, spacing: 12) {
+                        Group {
+                            Text("Home Assistant URL:")
+                            TextField("http://homeassistant.local:8123", text: $homeAssistantURL)
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                            
+                            Text("Long-lived Access Token:")
+                            TextField("Your access token", text: $accessToken)
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
                         }
-                    }
-                }
-                
-                // Menu Bar Display Section
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Menu Bar Display")
-                        .font(.headline)
-                        .foregroundColor(.primary)
-                    
-                    Text("Select exactly 2 entities to display in the menu bar:")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(EntityType.allCases, id: \.self) { entityType in
-                            HStack {
-                                Toggle("", isOn: Binding(
-                                    get: { selectedEntityTypes.contains(entityType) },
-                                    set: { isSelected in
-                                        if isSelected {
-                                            if selectedEntityTypes.count < 2 {
-                                                selectedEntityTypes.insert(entityType)
-                                            }
-                                        } else {
-                                            selectedEntityTypes.remove(entityType)
-                                        }
-                                    }
-                                ))
-                                .disabled(selectedEntityTypes.count >= 2 && !selectedEntityTypes.contains(entityType))
-                                .frame(width: 20)
-                                
-                                Text(entityType.displayName)
-                                Spacer()
+                        
+                        // Connection Test
+                        HStack {
+                            Button("Test Connection") {
+                                testConnection()
+                            }
+                            .disabled(isTestingConnection || homeAssistantURL.isEmpty || accessToken.isEmpty)
+                            
+                            if isTestingConnection {
+                                ProgressView()
+                                    .scaleEffect(0.5)
+                            }
+                            
+                            if let result = testResult {
+                                Text(result)
+                                    .foregroundColor(result.contains("Success") ? .green : .red)
                             }
                         }
                     }
-                    .padding(.leading, 10)
-                    
-                    if selectedEntityTypes.count != 2 {
-                        Text("Select exactly 2 entities (\(selectedEntityTypes.count)/2 selected)")
-                            .font(.caption)
-                            .foregroundColor(.red)
-                    }
+                    .padding(.leading, 20)
                 }
                 
-                // Refresh Settings
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Refresh Settings")
-                        .font(.headline)
-                        .foregroundColor(.primary)
-                    
-                    Text("Refresh Interval (seconds):")
+                Divider()
+                
+                // Menu Bar Configuration Section  
+                VStack(alignment: .leading, spacing: 15) {
                     HStack {
-                        Slider(value: $refreshInterval, in: 10...300, step: 5)
-                        Text("\(Int(refreshInterval))s")
-                            .frame(width: 40)
+                        Image(systemName: "menubar.rectangle")
+                            .foregroundColor(.green)
+                        Text("Menu Bar Configuration")
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primary)
                     }
+                    
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Entity Configuration")
+                            .font(.headline)
+                            .foregroundColor(.primary)
+                        
+                        Text("Configure the entity IDs for your sensors:")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        ForEach(EntityType.allCases, id: \.self) { entityType in
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Image(systemName: entityType.sfSymbolName)
+                                        .frame(width: 16)
+                                    Text("\(entityType.displayName) Entity ID:")
+                                }
+                                TextField(entityType.defaultEntityId, text: Binding(
+                                    get: { entityIds[entityType] ?? "" },
+                                    set: { entityIds[entityType] = $0 }
+                                ))
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                            }
+                        }
+                        
+                        Text("Display Selection")
+                            .font(.headline)
+                            .foregroundColor(.primary)
+                            .padding(.top, 8)
+                        
+                        Text("Choose which entities to display in the menu bar:")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        VStack(alignment: .leading, spacing: 12) {
+                            // Top position picker
+                            HStack {
+                                Text("Top Position:")
+                                    .frame(width: 100, alignment: .leading)
+                                
+                                Picker("", selection: $topEntity) {
+                                    Text("Select entity...").tag(EntityType?.none)
+                                    ForEach(EntityType.allCases, id: \.self) { entityType in
+                                        let isConfigured = !(entityIds[entityType]?.isEmpty ?? true)
+                                        if isConfigured {
+                                            HStack {
+                                                Image(systemName: entityType.sfSymbolName)
+                                                Text(entityType.displayName)
+                                            }
+                                            .tag(EntityType?.some(entityType))
+                                        }
+                                    }
+                                }
+                                .pickerStyle(MenuPickerStyle())
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .onChange(of: topEntity) { _ in
+                                    autoSaveIfValid()
+                                }
+                            }
+                            
+                            // Bottom position picker
+                            HStack {
+                                Text("Bottom Position:")
+                                    .frame(width: 100, alignment: .leading)
+                                
+                                Picker("", selection: $bottomEntity) {
+                                    Text("Select entity...").tag(EntityType?.none)
+                                    ForEach(EntityType.allCases, id: \.self) { entityType in
+                                        let isConfigured = !(entityIds[entityType]?.isEmpty ?? true)
+                                        if isConfigured && entityType != topEntity {
+                                            HStack {
+                                                Image(systemName: entityType.sfSymbolName)
+                                                Text(entityType.displayName)
+                                            }
+                                            .tag(EntityType?.some(entityType))
+                                        }
+                                    }
+                                }
+                                .pickerStyle(MenuPickerStyle())
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .onChange(of: bottomEntity) { _ in
+                                    autoSaveIfValid()
+                                }
+                            }
+                        }
+                        .padding(.leading, 10)
+                        
+                        if topEntity == nil || bottomEntity == nil {
+                            Text("Please select entities for both positions")
+                                .font(.caption)
+                                .foregroundColor(.red)
+                        }
+                        
+                        Text("Refresh Settings")
+                            .font(.headline)
+                            .foregroundColor(.primary)
+                            .padding(.top, 8)
+                        
+                        Text("Refresh Interval (seconds):")
+                        HStack {
+                            Slider(value: $refreshInterval, in: 10...300, step: 5)
+                            Text("\(Int(refreshInterval))s")
+                                .frame(width: 40)
+                        }
+                    }
+                    .padding(.leading, 20)
                 }
                 
-                // Connection Test
-                HStack {
-                    Button("Test Connection") {
-                        testConnection()
-                    }
-                    .disabled(isTestingConnection || homeAssistantURL.isEmpty || accessToken.isEmpty)
-                    
-                    if isTestingConnection {
-                        ProgressView()
-                            .scaleEffect(0.5)
-                    }
-                    
-                    if let result = testResult {
-                        Text(result)
-                            .foregroundColor(result.contains("Success") ? .green : .red)
-                    }
-                }
                 
                 Spacer()
                 
@@ -200,10 +252,24 @@ struct SettingsView: View {
     }
     
     private var isValidConfiguration: Bool {
-        return !homeAssistantURL.isEmpty && 
-               !accessToken.isEmpty && 
-               selectedEntityTypes.count == 2 &&
-               entityIds.allSatisfy { !$0.value.isEmpty }
+        guard !homeAssistantURL.isEmpty && !accessToken.isEmpty else {
+            return false
+        }
+        
+        guard let top = topEntity, let bottom = bottomEntity else {
+            return false
+        }
+        
+        // Check if selected entities have valid entity IDs
+        if let topId = entityIds[top], topId.isEmpty {
+            return false
+        }
+        
+        if let bottomId = entityIds[bottom], bottomId.isEmpty {
+            return false
+        }
+        
+        return true
     }
     
     private func loadCurrentSettings() {
@@ -217,10 +283,44 @@ struct SettingsView: View {
         }
         
         // Load selected entity types
-        selectedEntityTypes = Set(settings.selectedEntityTypes)
+        let selectedTypes = settings.selectedEntityTypes
+        if selectedTypes.count >= 2 {
+            topEntity = selectedTypes[0]
+            bottomEntity = selectedTypes[1]
+        } else {
+            topEntity = nil
+            bottomEntity = nil
+        }
+    }
+    
+    private func autoSaveIfValid() {
+        // Only auto-save if both entities are selected and all other settings are valid
+        guard let top = topEntity, let bottom = bottomEntity else {
+            return
+        }
+        
+        guard !homeAssistantURL.isEmpty && !accessToken.isEmpty else {
+            return
+        }
+        
+        // Check if selected entities have valid entity IDs
+        guard let topId = entityIds[top], !topId.isEmpty else {
+            return
+        }
+        
+        guard let bottomId = entityIds[bottom], !bottomId.isEmpty else {
+            return
+        }
+        
+        // All conditions met - save settings automatically
+        saveSettingsInternal(showAlert: false)
     }
     
     private func saveSettings() {
+        saveSettingsInternal(showAlert: true)
+    }
+    
+    private func saveSettingsInternal(showAlert: Bool) {
         print("💾 Saving settings...")
         print("🏠 URL: \(homeAssistantURL)")
         print("🔑 Token: \(accessToken.prefix(10))...")
@@ -238,8 +338,15 @@ struct SettingsView: View {
         }
         
         // Save selected entity types
-        settings.selectedEntityTypes = Array(selectedEntityTypes)
-        print("📊 Selected entities: \(selectedEntityTypes.map { $0.displayName }.joined(separator: ", "))")
+        var selectedTypes: [EntityType] = []
+        if let top = topEntity {
+            selectedTypes.append(top)
+        }
+        if let bottom = bottomEntity {
+            selectedTypes.append(bottom)
+        }
+        settings.selectedEntityTypes = selectedTypes
+        print("📊 Selected entities: Top: \(topEntity?.displayName ?? "none"), Bottom: \(bottomEntity?.displayName ?? "none")")
         
         print("✅ Settings saved to UserDefaults")
         print("⚙️ Settings now configured: \(settings.isConfigured)")
@@ -252,8 +359,10 @@ struct SettingsView: View {
             print("❌ AppDelegate.shared is nil!")
         }
         
-        alertMessage = "Settings saved successfully! Data refresh started."
-        showingAlert = true
+        if showAlert {
+            alertMessage = "Settings saved successfully! Data refresh started."
+            showingAlert = true
+        }
     }
     
     private func testConnection() {
