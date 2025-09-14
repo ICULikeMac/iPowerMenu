@@ -4,7 +4,15 @@
 set -e
 
 APP_NAME="iPowerMenu"
-VERSION="1.0.0"
+
+# Get version from git tag, fallback to 1.0.0 if not tagged
+if git describe --tags --exact-match 2>/dev/null; then
+    VERSION=$(git describe --tags --exact-match | sed 's/^v//')
+else
+    VERSION="1.0.0"
+fi
+
+echo "Building DMG for version: $VERSION"
 BUILD_DIR=".build"
 APP_PATH="$BUILD_DIR/$APP_NAME.app"
 DMG_NAME="$APP_NAME-$VERSION"
@@ -57,6 +65,19 @@ hdiutil convert "$TEMP_DMG_PATH" -format UDZO -imagekey zlib-level=9 -o "$DMG_PA
 
 # Clean up temporary DMG
 rm -f "$TEMP_DMG_PATH"
+
+# Code sign the DMG
+DEVELOPER_ID="Developer ID Application: Alexander Hart (M9QW4CBDY8)"
+echo "Code signing DMG with Developer ID..."
+codesign --force --sign "$DEVELOPER_ID" "$DMG_PATH"
+
+echo "Verifying DMG signature..."
+codesign --verify --verbose "$DMG_PATH"
+
+echo "Checking DMG signature details..."
+codesign -dv "$DMG_PATH"
+
+echo "DMG signed successfully ✅"
 
 # Display results
 ls -lh "$DMG_PATH"

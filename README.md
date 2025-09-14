@@ -1,4 +1,4 @@
-# Home Assistant Menu Bar
+# iPowerMenu
 
 A macOS menu bar application that displays solar power generation and battery state of charge from Home Assistant.
 
@@ -10,16 +10,37 @@ A macOS menu bar application that displays solar power generation and battery st
 - **First-run Setup**: Automatically opens settings on first launch
 - **Connection Testing**: Verify your Home Assistant connection before saving
 
-## Setup
+## Installation
 
-### 1. Build and Run
+### Option 1: Download Release (Recommended)
+
+1. Go to [Releases](https://github.com/ICULikeMac/iPowerMenu/releases)
+2. Download the latest `iPowerMenu-x.x.x.dmg` file
+3. Open the DMG and drag iPowerMenu.app to your Applications folder
+4. Launch iPowerMenu from Applications
+
+### Option 2: Build from Source
 
 ```bash
+git clone https://github.com/ICULikeMac/iPowerMenu.git
+cd iPowerMenu
 swift build
 swift run
 ```
 
-### 2. Configure Home Assistant
+### Option 3: Build Distribution Package
+
+```bash
+# Build app bundle
+./build-app.sh
+
+# Create DMG for distribution
+./create-dmg.sh
+```
+
+## Setup
+
+### 1. Configure Home Assistant
 
 When you first run the app, the settings window will open automatically. You'll need to provide:
 
@@ -28,7 +49,7 @@ When you first run the app, the settings window will open automatically. You'll 
 - **Solar Entity ID**: The entity ID for your solar power sensor (e.g., `sensor.solar_power`)
 - **Battery Entity ID**: The entity ID for your battery SOC sensor (e.g., `sensor.battery_soc`)
 
-### 3. Getting a Home Assistant Access Token
+### 2. Getting a Home Assistant Access Token
 
 1. Log into your Home Assistant web interface
 2. Click on your username in the bottom left
@@ -37,7 +58,7 @@ When you first run the app, the settings window will open automatically. You'll 
 5. Give it a name (e.g., "Menu Bar App")
 6. Copy the token and paste it into the app settings
 
-### 4. Finding Entity IDs
+### 3. Finding Entity IDs
 
 1. In Home Assistant, go to Developer Tools > States
 2. Search for your solar and battery sensors

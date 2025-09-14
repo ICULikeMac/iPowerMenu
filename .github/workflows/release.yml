@@ -1,0 +1,120 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: macos-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Xcode
+      uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: latest-stable
+
+    - name: Import Code Signing Certificate
+      env:
+        DEVELOPER_CERTIFICATE_P12: ${{ secrets.DEVELOPER_CERTIFICATE_P12 }}
+        CERTIFICATE_PASSWORD: ${{ secrets.CERTIFICATE_PASSWORD }}
+      run: |
+        # Create temporary keychain
+        security create-keychain -p "" build.keychain
+        security default-keychain -s build.keychain
+        security unlock-keychain -p "" build.keychain
+
+        # Import certificate
+        echo "$DEVELOPER_CERTIFICATE_P12" | base64 --decode > certificate.p12
+        security import certificate.p12 -k build.keychain -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+        security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" build.keychain
+
+        # Clean up
+        rm certificate.p12
+
+    - name: Build and Sign App
+      run: |
+        chmod +x build-app.sh
+        ./build-app.sh
+
+    - name: Create and Sign DMG
+      run: |
+        chmod +x create-dmg.sh
+        ./create-dmg.sh
+
+    - name: Setup Notarization
+      env:
+        APPLE_ID: ${{ secrets.APPLE_ID }}
+        APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      run: |
+        xcrun notarytool store-credentials "ci-profile" \
+          --apple-id "$APPLE_ID" \
+          --team-id "$APPLE_TEAM_ID" \
+          --password "$APPLE_APP_PASSWORD"
+
+    - name: Get Version and DMG Path
+      id: get_dmg
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/v}
+        DMG_PATH=".build/iPowerMenu-${VERSION}.dmg"
+        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+        echo "DMG_PATH=$DMG_PATH" >> $GITHUB_OUTPUT
+
+    - name: Notarize DMG
+      run: |
+        xcrun notarytool submit ${{ steps.get_dmg.outputs.DMG_PATH }} \
+          --keychain-profile "ci-profile" \
+          --wait
+
+        xcrun stapler staple ${{ steps.get_dmg.outputs.DMG_PATH }}
+
+    - name: Verify Notarization
+      run: |
+        xcrun stapler validate ${{ steps.get_dmg.outputs.DMG_PATH }}
+        spctl --assess --type open --context context:primary-signature -v ${{ steps.get_dmg.outputs.DMG_PATH }}
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: ${{ steps.get_dmg.outputs.DMG_PATH }}
+        name: iPowerMenu ${{ steps.get_dmg.outputs.VERSION }}
+        body: |
+          ## iPowerMenu v${{ steps.get_dmg.outputs.VERSION }}
+
+          A macOS menu bar app that displays Home Assistant solar power and battery data.
+
+          ### Features
+          - 🌞 Solar power monitoring in menu bar
+          - 🔋 Battery state of charge display
+          - ⚡ Grid usage tracking with import/export detection
+          - 🏠 Home power consumption monitoring
+          - ⚙️ Easy configuration through settings window
+          - 🔄 Auto-refresh with configurable intervals
+
+          ### Security & Distribution
+          - ✅ Code signed with Developer ID Application certificate
+          - ✅ Fully notarized by Apple for maximum trust
+          - ✅ Professional-grade security - no installation warnings
+          - ✅ Compatible with all macOS security settings
+
+          ### Installation
+          1. Download `iPowerMenu-${{ steps.get_dmg.outputs.VERSION }}.dmg`
+          2. Open the DMG file
+          3. Drag iPowerMenu.app to your Applications folder
+          4. Launch iPowerMenu from Applications
+          5. Configure your Home Assistant URL and access token
+
+          ### System Requirements
+          - macOS 13.0 or later
+          - Home Assistant instance with REST API access
+
+          🤖 Generated with [Claude Code](https://claude.ai/code)
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

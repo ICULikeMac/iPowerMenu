@@ -34,11 +34,22 @@ chmod +x "$MACOS_DIR/$APP_NAME"
 echo "App bundle created at: $APP_DIR"
 echo "To run: open $APP_DIR"
 
-# Optional: Code sign if developer certificate is available
-if [ -n "$DEVELOPER_ID" ]; then
-    echo "Code signing with Developer ID: $DEVELOPER_ID"
-    codesign --force --options runtime --sign "$DEVELOPER_ID" "$APP_DIR"
-    echo "App signed successfully"
-fi
+# Code sign with Developer ID Application certificate
+DEVELOPER_ID="Developer ID Application: Alexander Hart (M9QW4CBDY8)"
+
+echo "Code signing with Developer ID: $DEVELOPER_ID"
+echo "Signing executable..."
+codesign --force --options runtime --sign "$DEVELOPER_ID" "$MACOS_DIR/$APP_NAME"
+
+echo "Signing app bundle..."
+codesign --force --options runtime --sign "$DEVELOPER_ID" "$APP_DIR"
+
+echo "Verifying code signature..."
+codesign --verify --verbose "$APP_DIR"
+
+echo "Checking signature details..."
+codesign -dv "$APP_DIR"
+
+echo "App signed successfully ✅"
 
 echo "Build complete!"
