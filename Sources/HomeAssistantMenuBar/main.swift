@@ -24,7 +24,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let appMenu = NSMenu()
         appMenuItem.submenu = appMenu
         
-        let appName = "HomeAssistantMenuBar"
+        let appName = "iPowerMenu"
         appMenu.addItem(withTitle: "About \(appName)", action: nil, keyEquivalent: "")
         appMenu.addItem(NSMenuItem.separator())
         appMenu.addItem(withTitle: "Quit \(appName)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")

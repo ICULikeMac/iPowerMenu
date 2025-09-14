@@ -1,5 +1,6 @@
 import Foundation
 
+/// Represents the different types of Home Assistant entities supported by iPowerMenu
 enum EntityType: String, CaseIterable, Codable {
     case solar = "solar"
     case battery = "battery" 
@@ -41,11 +42,13 @@ enum EntityType: String, CaseIterable, Codable {
     }
 }
 
+/// Unit types for different entity measurements
 enum UnitType {
     case watts
     case percentage
 }
 
+/// Configuration for a Home Assistant entity including its type and entity ID
 struct EntityConfig {
     let type: EntityType
     let entityId: String
@@ -55,6 +58,8 @@ struct EntityConfig {
     var unitType: UnitType { type.unitType }
 }
 
+/// Manages app settings including Home Assistant connection details and entity configuration
+/// Persists settings to UserDefaults and provides reactive updates via ObservableObject
 class Settings: ObservableObject {
     static let shared = Settings()
     

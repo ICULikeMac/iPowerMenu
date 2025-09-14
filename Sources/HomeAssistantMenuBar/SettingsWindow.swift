@@ -321,10 +321,6 @@ struct SettingsView: View {
     }
     
     private func saveSettingsInternal(showAlert: Bool) {
-        print("💾 Saving settings...")
-        print("🏠 URL: \(homeAssistantURL)")
-        print("🔑 Token: \(accessToken.prefix(10))...")
-        
         settings.homeAssistantURL = homeAssistantURL.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.accessToken = accessToken.trimmingCharacters(in: .whitespacesAndNewlines)
         settings.refreshInterval = refreshInterval
@@ -333,7 +329,6 @@ struct SettingsView: View {
         for entityType in EntityType.allCases {
             if let entityId = entityIds[entityType] {
                 settings.setEntityId(for: entityType, entityId: entityId.trimmingCharacters(in: .whitespacesAndNewlines))
-                print("🏷️ \(entityType.displayName): \(entityId)")
             }
         }
         
@@ -346,17 +341,10 @@ struct SettingsView: View {
             selectedTypes.append(bottom)
         }
         settings.selectedEntityTypes = selectedTypes
-        print("📊 Selected entities: Top: \(topEntity?.displayName ?? "none"), Bottom: \(bottomEntity?.displayName ?? "none")")
-        
-        print("✅ Settings saved to UserDefaults")
-        print("⚙️ Settings now configured: \(settings.isConfigured)")
         
         // Notify MenuBarController to restart with new settings
         if let appDelegate = AppDelegate.shared {
-            print("📡 Notifying MenuBarController to restart...")
             appDelegate.menuBarController?.restartWithNewSettings()
-        } else {
-            print("❌ AppDelegate.shared is nil!")
         }
         
         if showAlert {

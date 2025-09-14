@@ -2,7 +2,14 @@ import AppKit
 import SwiftUI
 import Foundation
 
+/// Controls the macOS menu bar status item and manages data refresh from Home Assistant
+/// Displays user-selected entities in a stacked vertical layout with SF Symbols
 class MenuBarController: ObservableObject {
+    // MARK: - Constants
+    private static let menuBarFontSize: CGFloat = 10
+    private static let lineHeightMultiple: CGFloat = 0.85
+    
+    // MARK: - Properties
     private var statusItem: NSStatusItem
     private var contentView: StatusItemContentView?
     private let homeAssistantClient = HomeAssistantClient()
@@ -18,19 +25,12 @@ class MenuBarController: ObservableObject {
     }
     
     init() {
-        print("🚀 MenuBarController initializing...")
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         setupMenuBar()
         
-        print("⚙️ Settings configured: \(Settings.shared.isConfigured)")
-        print("🏠 HA URL: \(Settings.shared.homeAssistantURL ?? "nil")")
-        print("🔑 Token length: \(Settings.shared.accessToken.count)")
-        
         if Settings.shared.isConfigured {
-            print("✅ Configuration found, starting timer")
             startRefreshTimer()
         } else {
-            print("❌ No configuration, showing setup")
             showFirstRunSetup()
         }
     }
@@ -60,8 +60,11 @@ class MenuBarController: ObservableObject {
         // Install custom vertically-centered content view for stacked layout
         let view = StatusItemContentView()
         view.onClick = { [weak self] in
-            guard let self, let menu = self.statusItem.menu else { return }
-            self.statusItem.popUpMenu(menu)
+            guard let self = self else { return }
+            // For custom views, we need to manually trigger the menu
+            if let menu = self.statusItem.menu {
+                self.statusItem.popUpMenu(menu)
+            }
         }
         statusItem.view = view
         contentView = view
@@ -109,66 +112,43 @@ class MenuBarController: ObservableObject {
     }
     
     func restartWithNewSettings() {
-        print("🔧 Restarting with new settings...")
-        print("⚙️ Settings configured: \(Settings.shared.isConfigured)")
-        
         if Settings.shared.isConfigured {
-            print("🚀 Starting refresh timer...")
             startRefreshTimer()
         } else {
-            print("❌ Settings not configured, stopping timer")
             refreshTimer?.invalidate()
             updateMenuBarForNoConnection()
         }
     }
     
     private func refreshData() {
-        print("🔄 Starting data refresh...")
-        print("🏠 HA URL: \(Settings.shared.homeAssistantURL ?? "nil")")
-        
         // Create entity configs for ALL configured entities (for fetching)
         let allConfiguredEntities = EntityType.allCases.compactMap { type in
             let entityId = Settings.shared.getEntityId(for: type)
             return entityId.isEmpty ? nil : EntityConfig(type: type, entityId: entityId)
         }
         
-        // Get the selected entities for display purposes
-        let displayedEntities = Settings.shared.displayedEntityConfigs
-        
-        print("📊 All configured entities: \(allConfiguredEntities.map { "\($0.displayName): \($0.entityId)" }.joined(separator: ", "))")
-        print("🖥️ Displayed entities: \(displayedEntities.map { "\($0.displayName): \($0.entityId)" }.joined(separator: ", "))")
-        
-        Task {
+        Task { @MainActor in
             do {
                 var newValues: [EntityType: String] = [:]
                 
                 // Fetch data for ALL configured entities
                 for entityConfig in allConfiguredEntities {
-                    print("📡 Fetching \(entityConfig.displayName) data...")
                     let entityData = try await homeAssistantClient.getEntityState(entityId: entityConfig.entityId)
-                    print("📊 \(entityConfig.displayName) data received: \(entityData.state)")
-                    
                     let formattedValue = formatValue(entityData.state, unitType: entityConfig.unitType)
                     newValues[entityConfig.type] = formattedValue
                 }
                 
-                await MainActor.run {
-                    // Update entity values
-                    for (entityType, value) in newValues {
-                        self.entityValues[entityType] = value
-                    }
-                    
-                    self.connectionStatus = .connected
-                    print("✅ All entity values updated: \(newValues)")
-                    self.updateMenuBar()
-                    print("🎯 Menu bar updated")
+                // Update entity values
+                for (entityType, value) in newValues {
+                    self.entityValues[entityType] = value
                 }
+                
+                self.connectionStatus = .connected
+                self.updateMenuBar()
             } catch {
-                print("❌ Error during refresh: \(error)")
-                await MainActor.run {
-                    self.connectionStatus = .error
-                    self.updateMenuBar()
-                }
+                NSLog("Error refreshing Home Assistant data: \(error)")
+                self.connectionStatus = .error
+                self.updateMenuBarForError(error)
             }
         }
     }
@@ -188,12 +168,46 @@ class MenuBarController: ObservableObject {
         }
     }
     
+    private func updateMenuBarForError(_ error: Error) {
+        // Reset all entity values to show error state
+        for entityType in EntityType.allCases {
+            entityValues[entityType] = "---"
+        }
+        
+        updateMenuBarTitle()
+        
+        if let menu = statusItem.menu {
+            let errorMessage = getErrorMessage(for: error)
+            for (index, entityType) in EntityType.allCases.enumerated() {
+                menu.item(at: index)?.title = "\(entityType.displayName): \(errorMessage)"
+            }
+        }
+    }
+    
+    private func getErrorMessage(for error: Error) -> String {
+        if let haError = error as? HomeAssistantError {
+            switch haError {
+            case .unauthorized:
+                return "Check access token"
+            case .notFound:
+                return "Entity not found"
+            case .invalidURL:
+                return "Invalid URL"
+            case .networkError(_):
+                return "Connection failed"
+            default:
+                return "Error"
+            }
+        }
+        return "Error"
+    }
+    
     private func updateMenuBarTitle() {
         let attributed = NSMutableAttributedString()
         let displayedEntities = Settings.shared.displayedEntityConfigs
 
         // Two stacked lines; keep sizes small to fit menu bar height
-        let font = NSFont.systemFont(ofSize: 10, weight: .regular)
+        let font = NSFont.systemFont(ofSize: Self.menuBarFontSize, weight: .regular)
         let symbolConfig = NSImage.SymbolConfiguration(pointSize: font.pointSize, weight: .regular)
         // Calculate proper baseline offset using capHeight for consistent icon alignment
         let iconSize = font.pointSize
@@ -224,7 +238,7 @@ class MenuBarController: ObservableObject {
         let para = NSMutableParagraphStyle()
         para.alignment = .left
         para.lineSpacing = 0
-        para.lineHeightMultiple = 0.85  // Reduces line spacing instead of negative paragraphSpacing
+        para.lineHeightMultiple = Self.lineHeightMultiple
         let lineH = max(10.5, Double(font.ascender - font.descender + font.leading))
         para.minimumLineHeight = CGFloat(lineH)
         para.maximumLineHeight = CGFloat(lineH)
@@ -262,11 +276,6 @@ class MenuBarController: ObservableObject {
                 menu.insertItem(withTitle: "Status: \(statusText)", action: nil, keyEquivalent: "", at: statusIndex)
             }
             
-            let displayedEntities = Settings.shared.displayedEntityConfigs
-            let entitySummary = displayedEntities.map { "\($0.displayName): \(entityValues[$0.type] ?? "---")" }.joined(separator: ", ")
-            let allEntitySummary = EntityType.allCases.map { "\($0.displayName): \(entityValues[$0] ?? "---")" }.joined(separator: ", ")
-            print("📋 Menu bar display - \(entitySummary)")
-            print("📋 All entities - \(allEntitySummary), Status: \(statusText)")
         }
     }
     
