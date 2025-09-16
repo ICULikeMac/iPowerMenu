@@ -37,24 +37,34 @@ class MenuBarController: ObservableObject {
     
     private func setupMenuBar() {
         let menu = NSMenu()
-        
-        // Add menu items for all configured entities (not just displayed ones)
-        for entityType in EntityType.allCases {
+
+        // Add embedded power flow view
+        let powerFlowHostingView = NSHostingView(rootView: CompactPowerFlowView(menuBarController: self))
+        powerFlowHostingView.frame = NSRect(x: 0, y: 0, width: 300, height: 230)
+
+        let powerFlowMenuItem = NSMenuItem()
+        powerFlowMenuItem.view = powerFlowHostingView
+        menu.addItem(powerFlowMenuItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        // Add menu items for display entities only (filter out internal entities)
+        for entityType in EntityType.allCases where entityType.isDisplayEntity {
             menu.addItem(withTitle: "\(entityType.displayName): ---", action: nil, keyEquivalent: "")
         }
-        
+
         menu.addItem(NSMenuItem.separator())
         let refreshItem = menu.addItem(withTitle: "Refresh Now", action: #selector(refreshNow), keyEquivalent: "r")
         refreshItem.target = self
-        
+
         let settingsItem = menu.addItem(withTitle: "Settings...", action: #selector(showSettings), keyEquivalent: ",")
         settingsItem.target = self
-        
+
         menu.addItem(NSMenuItem.separator())
-        
+
         let quitItem = menu.addItem(withTitle: "Quit", action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
-        
+
         statusItem.menu = menu
 
         // Install custom vertically-centered content view for stacked layout
@@ -128,27 +138,53 @@ class MenuBarController: ObservableObject {
         }
         
         Task { @MainActor in
-            do {
-                var newValues: [EntityType: String] = [:]
-                
-                // Fetch data for ALL configured entities
-                for entityConfig in allConfiguredEntities {
+            var newValues: [EntityType: String] = [:]
+            var successfulFetches = 0
+            let totalEntities = allConfiguredEntities.count
+
+            // Fetch data for ALL configured entities with individual error handling
+            for entityConfig in allConfiguredEntities {
+                do {
                     let entityData = try await homeAssistantClient.getEntityState(entityId: entityConfig.entityId)
                     let formattedValue = formatValue(entityData.state, unitType: entityConfig.unitType)
                     newValues[entityConfig.type] = formattedValue
+                    successfulFetches += 1
+                } catch {
+                    // Log individual entity failure but continue with others
+                    NSLog("Failed to fetch \(entityConfig.type.displayName) (\(entityConfig.entityId)): \(error)")
+
+                    // Set appropriate fallback value based on unit type
+                    switch entityConfig.unitType {
+                    case .watts:
+                        newValues[entityConfig.type] = "N/A"
+                    case .percentage:
+                        newValues[entityConfig.type] = "N/A"
+                    case .currency:
+                        newValues[entityConfig.type] = "N/A"
+                    }
                 }
-                
-                // Update entity values
-                for (entityType, value) in newValues {
-                    self.entityValues[entityType] = value
-                }
-                
+            }
+
+            // Update entity values with what we successfully fetched
+            for (entityType, value) in newValues {
+                self.entityValues[entityType] = value
+            }
+
+            // Determine connection status based on success rate
+            if successfulFetches == 0 && totalEntities > 0 {
+                // Complete failure - no entities could be fetched
+                self.connectionStatus = .error
+                NSLog("Failed to fetch any entities - connection error")
+                self.updateMenuBarForError(HomeAssistantError.networkError(NSError(domain: "iPowerMenu", code: 0, userInfo: [NSLocalizedDescriptionKey: "No entities could be fetched"])))
+            } else if successfulFetches < totalEntities {
+                // Partial success - some entities failed
+                self.connectionStatus = .connected
+                NSLog("Partial success: \(successfulFetches)/\(totalEntities) entities fetched successfully")
+                self.updateMenuBar()
+            } else {
+                // Complete success
                 self.connectionStatus = .connected
                 self.updateMenuBar()
-            } catch {
-                NSLog("Error refreshing Home Assistant data: \(error)")
-                self.connectionStatus = .error
-                self.updateMenuBarForError(error)
             }
         }
     }
@@ -162,8 +198,10 @@ class MenuBarController: ObservableObject {
         updateMenuBarTitle()
         
         if let menu = statusItem.menu {
-            for (index, entityType) in EntityType.allCases.enumerated() {
-                menu.item(at: index)?.title = "\(entityType.displayName): Not configured"
+            let displayEntities = EntityType.allCases.filter { $0.isDisplayEntity }
+            for (index, entityType) in displayEntities.enumerated() {
+                // Offset by 2 to account for power flow view and separator at the beginning
+                menu.item(at: index + 2)?.title = "\(entityType.displayName): Not configured"
             }
         }
     }
@@ -178,8 +216,10 @@ class MenuBarController: ObservableObject {
         
         if let menu = statusItem.menu {
             let errorMessage = getErrorMessage(for: error)
-            for (index, entityType) in EntityType.allCases.enumerated() {
-                menu.item(at: index)?.title = "\(entityType.displayName): \(errorMessage)"
+            let displayEntities = EntityType.allCases.filter { $0.isDisplayEntity }
+            for (index, entityType) in displayEntities.enumerated() {
+                // Offset by 2 to account for power flow view and separator at the beginning
+                menu.item(at: index + 2)?.title = "\(entityType.displayName): \(errorMessage)"
             }
         }
     }
@@ -258,18 +298,20 @@ class MenuBarController: ObservableObject {
         updateMenuBarTitle()
         
         if let menu = statusItem.menu {
-            // Update all entity menu items
-            for (index, entityType) in EntityType.allCases.enumerated() {
+            // Update display entity menu items
+            let displayEntities = EntityType.allCases.filter { $0.isDisplayEntity }
+            for (index, entityType) in displayEntities.enumerated() {
                 let value = entityValues[entityType] ?? "---"
                 let displayName = getDisplayName(for: entityType, value: value)
-                menu.item(at: index)?.title = "\(displayName): \(value)"
+                // Offset by 2 to account for power flow view and separator at the beginning
+                menu.item(at: index + 2)?.title = "\(displayName): \(value)"
             }
-            
-            let statusText = connectionStatus == .connected ? "✅ Connected" : 
+
+            let statusText = connectionStatus == .connected ? "✅ Connected" :
                            connectionStatus == .error ? "❌ Connection Error" : "⚠️ Disconnected"
-            
-            // Status item is after the entities and separator (index = entityCount + 1)
-            let statusIndex = EntityType.allCases.count + 1
+
+            // Status item is after the entities and separator (index = displayEntityCount + 3)
+            let statusIndex = displayEntities.count + 3
             if menu.numberOfItems > statusIndex {
                 menu.item(at: statusIndex)?.title = "Status: \(statusText)"
             } else {
@@ -285,17 +327,15 @@ class MenuBarController: ObservableObject {
             return formatWatts(value)
         case .percentage:
             return formatPercentage(value)
+        case .currency:
+            return formatCurrency(value)
         }
     }
     
     private func getDisplayName(for entityType: EntityType, value: String) -> String {
         if entityType == .gridUsage {
-            // For grid usage, show "Grid Export" if the value is negative (indicating export)
-            if let numericValue = extractNumericValue(from: value), numericValue < 0 {
-                return "Grid Export"
-            } else {
-                return "Grid Usage"
-            }
+            // Always show "Grid" - the positive/negative value indicates import/export
+            return "Grid"
         }
         return entityType.displayName
     }
@@ -309,6 +349,9 @@ class MenuBarController: ObservableObject {
     }
     
     private func formatWatts(_ value: String) -> String {
+        if value == "N/A" {
+            return "N/A"
+        }
         if let watts = Double(value) {
             let formatted = String(format: "%.0f", watts)
             if formatted.count == 1 {
@@ -319,12 +362,25 @@ class MenuBarController: ObservableObject {
         }
         return "---"
     }
-    
+
     private func formatPercentage(_ value: String) -> String {
+        if value == "N/A" {
+            return "N/A"
+        }
         if let percentage = Double(value) {
             return String(format: "%.0f%%", percentage)
         }
         return "---%"
+    }
+
+    private func formatCurrency(_ value: String) -> String {
+        if value == "N/A" {
+            return "N/A"
+        }
+        if let price = Double(value) {
+            return String(format: "$%.3f/kWh", price)
+        }
+        return "$---.---/kWh"
     }
     
     deinit {
