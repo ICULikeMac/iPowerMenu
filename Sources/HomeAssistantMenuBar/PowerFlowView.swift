@@ -16,6 +16,20 @@ struct PowerFlowView: View {
 
             GeometryReader { geometry in
                 ZStack {
+                    // Subtle background gradient for modern look
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(
+                            LinearGradient(
+                                gradient: Gradient(colors: [
+                                    Color(red: 0.98, green: 0.98, blue: 1.0).opacity(0.3),
+                                    Color(red: 0.95, green: 0.97, blue: 1.0).opacity(0.1)
+                                ]),
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .shadow(color: .black.opacity(0.05), radius: 10, x: 0, y: 5)
+
                     // Connection lines
                     PowerFlowConnections(
                         size: geometry.size,
@@ -213,23 +227,40 @@ struct PowerComponent: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            // Icon circle
+            // Icon circle with modern styling
             Circle()
-                .stroke(color, lineWidth: 3)
+                .stroke(
+                    LinearGradient(
+                        gradient: Gradient(colors: [
+                            color.opacity(0.8),
+                            color.opacity(0.4)
+                        ]),
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 3
+                )
+                .background(
+                    Circle()
+                        .fill(color.opacity(0.1))
+                        .shadow(color: color.opacity(0.3), radius: 8, x: 0, y: 4)
+                        .shadow(color: .black.opacity(0.1), radius: 12, x: 0, y: 8)
+                )
                 .frame(width: 80, height: 80)
                 .overlay(
                     Image(systemName: icon)
                         .font(.title)
-                        .foregroundColor(color)
+                        .foregroundColor(color.opacity(0.9))
+                        .shadow(color: .black.opacity(0.2), radius: 2, x: 0, y: 1)
                 )
 
-            // Label
+            // Label with better typography
             Text(label)
                 .font(.caption)
                 .fontWeight(.medium)
                 .foregroundColor(.secondary)
 
-            // Value
+            // Value with enhanced styling
             Text(value)
                 .font(.headline)
                 .fontWeight(.bold)
@@ -354,7 +385,7 @@ struct PowerFlowConnections: View {
 struct ConnectionLines: View {
     let size: CGSize
 
-    private let circleRadius: CGFloat = 40 // Half of the 80pt circle diameter
+    private let circleRadius: CGFloat = 50 // Proper offset with padding to avoid intersections
 
     var body: some View {
         Path { path in
@@ -369,8 +400,10 @@ struct ConnectionLines: View {
                          end: CGPoint(x: size.width * 0.8, y: size.height * 0.5))
 
             // Solar (0.5, 0.2) to Battery (0.5, 0.8) - direct vertical
-            path.move(to: CGPoint(x: size.width * 0.5, y: size.height * 0.2 + circleRadius))
-            path.addLine(to: CGPoint(x: size.width * 0.5, y: size.height * 0.8 - circleRadius))
+            let padding: CGFloat = 5
+            let effectiveRadius = circleRadius + padding
+            path.move(to: CGPoint(x: size.width * 0.5, y: size.height * 0.2 + effectiveRadius))
+            path.addLine(to: CGPoint(x: size.width * 0.5, y: size.height * 0.8 - effectiveRadius))
 
             // Grid (0.2, 0.5) to Battery (0.5, 0.8)
             addCurvedLine(path: &path,
@@ -378,29 +411,36 @@ struct ConnectionLines: View {
                          end: CGPoint(x: size.width * 0.5, y: size.height * 0.8))
 
             // Grid (0.2, 0.5) to Home (0.8, 0.5) - direct horizontal
-            path.move(to: CGPoint(x: size.width * 0.2 + circleRadius, y: size.height * 0.5))
-            path.addLine(to: CGPoint(x: size.width * 0.8 - circleRadius, y: size.height * 0.5))
+            path.move(to: CGPoint(x: size.width * 0.2 + effectiveRadius, y: size.height * 0.5))
+            path.addLine(to: CGPoint(x: size.width * 0.8 - effectiveRadius, y: size.height * 0.5))
 
             // Battery (0.5, 0.8) to Home (0.8, 0.5)
             addCurvedLine(path: &path,
                          start: CGPoint(x: size.width * 0.5, y: size.height * 0.8),
                          end: CGPoint(x: size.width * 0.8, y: size.height * 0.5))
         }
-        .stroke(Color.gray.opacity(0.2), lineWidth: 1.5)
+        .stroke(Color.gray.opacity(0.08), lineWidth: 1)
     }
 
     private func addCurvedLine(path: inout Path, start: CGPoint, end: CGPoint) {
         let adjustedStart = adjustPointForCircle(start, towards: end)
         let adjustedEnd = adjustPointForCircle(end, towards: start)
 
-        // Create a curved line with control point for smooth flow
+        // Calculate distance-based curve offset for better visual flow
+        let distance = sqrt(pow(adjustedEnd.x - adjustedStart.x, 2) + pow(adjustedEnd.y - adjustedStart.y, 2))
+        let curveIntensity: CGFloat = min(50, max(20, distance * 0.15))
+
+        // Calculate angle perpendicular to connection line
+        let angle = atan2(adjustedEnd.y - adjustedStart.y, adjustedEnd.x - adjustedStart.x)
+        let perpendicularAngle = angle + .pi / 2
+
+        // Create control point offset perpendicular to line
         let midX = (adjustedStart.x + adjustedEnd.x) / 2
         let midY = (adjustedStart.y + adjustedEnd.y) / 2
-        let offset: CGFloat = 20 // Curve offset
 
         let controlPoint = CGPoint(
-            x: midX + (adjustedStart.y < adjustedEnd.y ? -offset : offset),
-            y: midY + (adjustedStart.x < adjustedEnd.x ? -offset : offset)
+            x: midX + cos(perpendicularAngle) * curveIntensity,
+            y: midY + sin(perpendicularAngle) * curveIntensity
         )
 
         path.move(to: adjustedStart)
@@ -417,9 +457,13 @@ struct ConnectionLines: View {
         let unitX = dx / distance
         let unitY = dy / distance
 
+        // Add extra padding to ensure clean separation
+        let padding: CGFloat = 5
+        let effectiveRadius = circleRadius + padding
+
         return CGPoint(
-            x: point.x + unitX * circleRadius,
-            y: point.y + unitY * circleRadius
+            x: point.x + unitX * effectiveRadius,
+            y: point.y + unitY * effectiveRadius
         )
     }
 }
@@ -433,7 +477,7 @@ struct DirectFlowIndicator: View {
     let power: Double
     let curved: Bool
 
-    private let circleRadius: CGFloat = 40
+    private let circleRadius: CGFloat = 50
 
     private var dotCount: Int {
         min(5, max(1, Int(power / 500)))
@@ -468,9 +512,13 @@ struct DirectFlowIndicator: View {
         let unitX = dx / distance
         let unitY = dy / distance
 
+        // Add extra padding to ensure clean separation
+        let padding: CGFloat = 5
+        let effectiveRadius = circleRadius + padding
+
         return CGPoint(
-            x: point.x + unitX * circleRadius,
-            y: point.y + unitY * circleRadius
+            x: point.x + unitX * effectiveRadius,
+            y: point.y + unitY * effectiveRadius
         )
     }
 }
@@ -489,14 +537,21 @@ struct MovingDotDirect: View {
 
     var currentPosition: CGPoint {
         if curved {
-            // Calculate curved path position
+            // Calculate distance-based curve offset for consistent flow
+            let distance = sqrt(pow(end.x - start.x, 2) + pow(end.y - start.y, 2))
+            let curveIntensity: CGFloat = min(50, max(20, distance * 0.15))
+
+            // Calculate angle perpendicular to connection line
+            let angle = atan2(end.y - start.y, end.x - start.x)
+            let perpendicularAngle = angle + .pi / 2
+
+            // Create control point offset perpendicular to line
             let midX = (start.x + end.x) / 2
             let midY = (start.y + end.y) / 2
-            let offset: CGFloat = 20
 
             let controlPoint = CGPoint(
-                x: midX + (start.y < end.y ? -offset : offset),
-                y: midY + (start.x < end.x ? -offset : offset)
+                x: midX + cos(perpendicularAngle) * curveIntensity,
+                y: midY + sin(perpendicularAngle) * curveIntensity
             )
 
             return quadraticBezierPoint(t: progress, p0: start, p1: controlPoint, p2: end)
@@ -511,9 +566,19 @@ struct MovingDotDirect: View {
 
     var body: some View {
         Circle()
-            .fill(color)
-            .frame(width: 8, height: 8)
-            .shadow(color: color.opacity(0.6), radius: 3)
+            .fill(RadialGradient(
+                gradient: Gradient(colors: [
+                    color.opacity(0.9),
+                    color.opacity(0.6),
+                    color.opacity(0.3)
+                ]),
+                center: .center,
+                startRadius: 1,
+                endRadius: 4
+            ))
+            .frame(width: 10, height: 10)
+            .shadow(color: color.opacity(0.8), radius: 4, x: 0, y: 0)
+            .shadow(color: color.opacity(0.4), radius: 8, x: 0, y: 0)
             .position(currentPosition)
             .onAppear {
                 withAnimation(
@@ -595,9 +660,19 @@ struct MovingDot: View {
 
     var body: some View {
         Circle()
-            .fill(color)
-            .frame(width: 8, height: 8)
-            .shadow(color: color.opacity(0.6), radius: 3)
+            .fill(RadialGradient(
+                gradient: Gradient(colors: [
+                    color.opacity(0.9),
+                    color.opacity(0.6),
+                    color.opacity(0.3)
+                ]),
+                center: .center,
+                startRadius: 1,
+                endRadius: 4
+            ))
+            .frame(width: 10, height: 10)
+            .shadow(color: color.opacity(0.8), radius: 4, x: 0, y: 0)
+            .shadow(color: color.opacity(0.4), radius: 8, x: 0, y: 0)
             .position(currentPosition)
             .onAppear {
                 withAnimation(

@@ -11,6 +11,20 @@ struct CompactPowerFlowView: View {
         VStack(alignment: .center, spacing: 8) {
             GeometryReader { geometry in
                 ZStack {
+                    // Subtle background gradient for compact modern look
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(
+                            LinearGradient(
+                                gradient: Gradient(colors: [
+                                    Color(red: 0.98, green: 0.98, blue: 1.0).opacity(0.2),
+                                    Color(red: 0.95, green: 0.97, blue: 1.0).opacity(0.05)
+                                ]),
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .shadow(color: .black.opacity(0.03), radius: 6, x: 0, y: 3)
+
                     // Connection lines
                     CompactConnectionLines(
                         size: geometry.size,
@@ -206,14 +220,31 @@ struct CompactPowerComponent: View {
 
     var body: some View {
         VStack(spacing: 3) {
-            // Icon circle (smaller for compact view)
+            // Icon circle with modern styling (compact)
             Circle()
-                .stroke(color, lineWidth: 2)
+                .stroke(
+                    LinearGradient(
+                        gradient: Gradient(colors: [
+                            color.opacity(0.8),
+                            color.opacity(0.4)
+                        ]),
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 2
+                )
+                .background(
+                    Circle()
+                        .fill(color.opacity(0.08))
+                        .shadow(color: color.opacity(0.2), radius: 4, x: 0, y: 2)
+                        .shadow(color: .black.opacity(0.08), radius: 6, x: 0, y: 4)
+                )
                 .frame(width: 50, height: 50)
                 .overlay(
                     Image(systemName: icon)
                         .font(.caption)
-                        .foregroundColor(color)
+                        .foregroundColor(color.opacity(0.9))
+                        .shadow(color: .black.opacity(0.1), radius: 1, x: 0, y: 0.5)
                 )
 
             // Label
@@ -248,7 +279,7 @@ struct CompactConnectionLines: View {
     let batteryPower: Double
     let homePower: Double
 
-    private let circleRadius: CGFloat = 25 // Smaller for compact view
+    private let circleRadius: CGFloat = 30 // Improved offset with padding for compact view
 
     var body: some View {
         ZStack {
@@ -265,8 +296,10 @@ struct CompactConnectionLines: View {
                                    end: CGPoint(x: size.width * 0.8, y: size.height * 0.5))
 
                 // Solar to Battery (vertical)
-                path.move(to: CGPoint(x: size.width * 0.5, y: size.height * 0.2 + circleRadius))
-                path.addLine(to: CGPoint(x: size.width * 0.5, y: size.height * 0.8 - circleRadius))
+                let padding: CGFloat = 3 // Smaller padding for compact view
+                let effectiveRadius = circleRadius + padding
+                path.move(to: CGPoint(x: size.width * 0.5, y: size.height * 0.2 + effectiveRadius))
+                path.addLine(to: CGPoint(x: size.width * 0.5, y: size.height * 0.8 - effectiveRadius))
 
                 // Grid to Battery
                 addCompactCurvedLine(path: &path,
@@ -274,15 +307,15 @@ struct CompactConnectionLines: View {
                                    end: CGPoint(x: size.width * 0.5, y: size.height * 0.8))
 
                 // Grid to Home (horizontal)
-                path.move(to: CGPoint(x: size.width * 0.2 + circleRadius, y: size.height * 0.5))
-                path.addLine(to: CGPoint(x: size.width * 0.8 - circleRadius, y: size.height * 0.5))
+                path.move(to: CGPoint(x: size.width * 0.2 + effectiveRadius, y: size.height * 0.5))
+                path.addLine(to: CGPoint(x: size.width * 0.8 - effectiveRadius, y: size.height * 0.5))
 
                 // Battery to Home
                 addCompactCurvedLine(path: &path,
                                    start: CGPoint(x: size.width * 0.5, y: size.height * 0.8),
                                    end: CGPoint(x: size.width * 0.8, y: size.height * 0.5))
             }
-            .stroke(Color.gray.opacity(0.15), lineWidth: 1)
+            .stroke(Color.gray.opacity(0.06), lineWidth: 0.8)
 
             // Simplified flow indicators (fewer dots, faster animation for menu)
             CompactPowerFlows(
@@ -299,13 +332,21 @@ struct CompactConnectionLines: View {
         let adjustedStart = adjustPointForCircle(start, towards: end)
         let adjustedEnd = adjustPointForCircle(end, towards: start)
 
+        // Calculate distance-based curve offset for compact view
+        let distance = sqrt(pow(adjustedEnd.x - adjustedStart.x, 2) + pow(adjustedEnd.y - adjustedStart.y, 2))
+        let curveIntensity: CGFloat = min(25, max(12, distance * 0.12)) // Smaller for compact
+
+        // Calculate angle perpendicular to connection line
+        let angle = atan2(adjustedEnd.y - adjustedStart.y, adjustedEnd.x - adjustedStart.x)
+        let perpendicularAngle = angle + .pi / 2
+
+        // Create control point offset perpendicular to line
         let midX = (adjustedStart.x + adjustedEnd.x) / 2
         let midY = (adjustedStart.y + adjustedEnd.y) / 2
-        let offset: CGFloat = 15 // Smaller curve offset
 
         let controlPoint = CGPoint(
-            x: midX + (adjustedStart.y < adjustedEnd.y ? -offset : offset),
-            y: midY + (adjustedStart.x < adjustedEnd.x ? -offset : offset)
+            x: midX + cos(perpendicularAngle) * curveIntensity,
+            y: midY + sin(perpendicularAngle) * curveIntensity
         )
 
         path.move(to: adjustedStart)
@@ -322,9 +363,13 @@ struct CompactConnectionLines: View {
         let unitX = dx / distance
         let unitY = dy / distance
 
+        // Add extra padding to ensure clean separation
+        let padding: CGFloat = 3 // Smaller padding for compact view
+        let effectiveRadius = circleRadius + padding
+
         return CGPoint(
-            x: point.x + unitX * circleRadius,
-            y: point.y + unitY * circleRadius
+            x: point.x + unitX * effectiveRadius,
+            y: point.y + unitY * effectiveRadius
         )
     }
 }
@@ -400,7 +445,7 @@ struct CompactFlowIndicator: View {
     let color: Color
     let curved: Bool
 
-    private let circleRadius: CGFloat = 25
+    private let circleRadius: CGFloat = 30
 
     var body: some View {
         // Single moving dot for compact view
@@ -422,9 +467,13 @@ struct CompactFlowIndicator: View {
         let unitX = dx / distance
         let unitY = dy / distance
 
+        // Add extra padding to ensure clean separation
+        let padding: CGFloat = 3 // Smaller padding for compact view
+        let effectiveRadius = circleRadius + padding
+
         return CGPoint(
-            x: point.x + unitX * circleRadius,
-            y: point.y + unitY * circleRadius
+            x: point.x + unitX * effectiveRadius,
+            y: point.y + unitY * effectiveRadius
         )
     }
 }
@@ -441,13 +490,21 @@ struct CompactMovingDot: View {
 
     var currentPosition: CGPoint {
         if curved {
+            // Calculate distance-based curve offset for compact view
+            let distance = sqrt(pow(end.x - start.x, 2) + pow(end.y - start.y, 2))
+            let curveIntensity: CGFloat = min(25, max(12, distance * 0.12)) // Smaller for compact
+
+            // Calculate angle perpendicular to connection line
+            let angle = atan2(end.y - start.y, end.x - start.x)
+            let perpendicularAngle = angle + .pi / 2
+
+            // Create control point offset perpendicular to line
             let midX = (start.x + end.x) / 2
             let midY = (start.y + end.y) / 2
-            let offset: CGFloat = 15
 
             let controlPoint = CGPoint(
-                x: midX + (start.y < end.y ? -offset : offset),
-                y: midY + (start.x < end.x ? -offset : offset)
+                x: midX + cos(perpendicularAngle) * curveIntensity,
+                y: midY + sin(perpendicularAngle) * curveIntensity
             )
 
             return quadraticBezierPoint(t: progress, p0: start, p1: controlPoint, p2: end)
@@ -461,8 +518,19 @@ struct CompactMovingDot: View {
 
     var body: some View {
         Circle()
-            .fill(color)
-            .frame(width: 6, height: 6) // Smaller for compact view
+            .fill(RadialGradient(
+                gradient: Gradient(colors: [
+                    color.opacity(0.9),
+                    color.opacity(0.6),
+                    color.opacity(0.3)
+                ]),
+                center: .center,
+                startRadius: 1,
+                endRadius: 3
+            ))
+            .frame(width: 8, height: 8) // Slightly larger for better visibility
+            .shadow(color: color.opacity(0.7), radius: 3, x: 0, y: 0)
+            .shadow(color: color.opacity(0.3), radius: 6, x: 0, y: 0)
             .position(currentPosition)
             .onAppear {
                 withAnimation(
