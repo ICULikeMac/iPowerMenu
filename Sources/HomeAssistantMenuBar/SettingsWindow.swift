@@ -115,20 +115,42 @@ struct SettingsView: View {
                             .font(.caption)
                             .foregroundColor(.secondary)
                         
-                        ForEach(EntityType.allCases, id: \.self) { entityType in
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Image(systemName: entityType.sfSymbolName)
-                                        .frame(width: 16)
-                                    Text("\(entityType.displayName) Entity ID:")
-                                }
-                                TextField(entityType.defaultEntityId, text: Binding(
-                                    get: { entityIds[entityType] ?? "" },
-                                    set: { entityIds[entityType] = $0 }
-                                ))
-                                .textFieldStyle(RoundedBorderTextFieldStyle())
-                            }
+                        // Solar Power
+                        EntityConfigRow(
+                            entityType: .solar,
+                            entityIds: $entityIds
+                        )
+
+                        // Battery Configuration (grouped together)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Battery Configuration")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                                .foregroundColor(.primary)
+                                .padding(.top, 8)
+
+                            EntityConfigRow(entityType: .battery, entityIds: $entityIds)
+                            EntityConfigRow(entityType: .batteryCharging, entityIds: $entityIds)
+                            EntityConfigRow(entityType: .batteryDischarging, entityIds: $entityIds)
                         }
+                        .padding(.leading, 10)
+
+                        // Grid and Home
+                        EntityConfigRow(entityType: .gridUsage, entityIds: $entityIds)
+                        EntityConfigRow(entityType: .homePower, entityIds: $entityIds)
+
+                        // Pricing Configuration (grouped together)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Pricing Configuration")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                                .foregroundColor(.primary)
+                                .padding(.top, 8)
+
+                            EntityConfigRow(entityType: .purchasePrice, entityIds: $entityIds)
+                            EntityConfigRow(entityType: .feedInTariff, entityIds: $entityIds)
+                        }
+                        .padding(.leading, 10)
                         
                         Text("Display Selection")
                             .font(.headline)
@@ -388,6 +410,26 @@ struct SettingsView: View {
     private func closeWindow() {
         if let window = NSApp.keyWindow {
             window.close()
+        }
+    }
+}
+
+struct EntityConfigRow: View {
+    let entityType: EntityType
+    @Binding var entityIds: [EntityType: String]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Image(systemName: entityType.sfSymbolName)
+                    .frame(width: 16)
+                Text("\(entityType.displayName) Entity ID:")
+            }
+            TextField(entityType.defaultEntityId, text: Binding(
+                get: { entityIds[entityType] ?? "" },
+                set: { entityIds[entityType] = $0 }
+            ))
+            .textFieldStyle(RoundedBorderTextFieldStyle())
         }
     }
 }
