@@ -337,7 +337,7 @@ struct DottedConnectionLines: View {
 
     var body: some View {
         Path { path in
-            PowerFlowPathBuilder.drawDottedVisibleEdges(path: &path, layout: layout)
+            PowerFlowPathBuilder.drawDottedVisibleEdges(path: &path, layout: layout, centerYOffset: -14)
         }
         .stroke(
             Color.gray.opacity(0.22),

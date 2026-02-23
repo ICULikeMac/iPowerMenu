@@ -65,8 +65,12 @@ enum PowerFlowPathBuilder {
     }
 
     static func drawDottedVisibleEdges(path: inout Path, layout: PowerFlowLayout) {
+        drawDottedVisibleEdges(path: &path, layout: layout, centerYOffset: 0)
+    }
+
+    static func drawDottedVisibleEdges(path: inout Path, layout: PowerFlowLayout, centerYOffset: CGFloat) {
         for (from, to) in layout.visibleEdges {
-            guard let segment = segment(in: layout, from: from, to: to) else { continue }
+            guard let segment = scaffoldSegment(in: layout, from: from, to: to, centerYOffset: centerYOffset) else { continue }
             path.move(to: segment.start)
             if let control = segment.control {
                 path.addQuadCurve(to: segment.end, control: control)
@@ -74,6 +78,39 @@ enum PowerFlowPathBuilder {
                 path.addLine(to: segment.end)
             }
         }
+    }
+
+    static func scaffoldSegment(
+        in layout: PowerFlowLayout,
+        from: PowerFlowNode,
+        to: PowerFlowNode,
+        centerYOffset: CGFloat
+    ) -> PowerFlowSegment? {
+        guard
+            from != to,
+            let fromCenter = layout.nodeCenters[from],
+            let toCenter = layout.nodeCenters[to]
+        else {
+            return nil
+        }
+
+        let isCenterHorizontal = (from == .grid && to == .home) || (from == .home && to == .grid)
+        let shiftedTargetFrom = CGPoint(x: toCenter.x, y: toCenter.y + (isCenterHorizontal ? centerYOffset : 0))
+        let shiftedTargetTo = CGPoint(x: fromCenter.x, y: fromCenter.y + (isCenterHorizontal ? centerYOffset : 0))
+
+        let start = adjustPointForCircle(fromCenter, towards: shiftedTargetFrom, layout: layout)
+        let end = adjustPointForCircle(toCenter, towards: shiftedTargetTo, layout: layout)
+
+        let dx = abs(end.x - start.x)
+        let dy = abs(end.y - start.y)
+        let shouldCurve = dx > 8 && dy > 8
+
+        guard shouldCurve else {
+            return PowerFlowSegment(start: start, end: end, control: nil)
+        }
+
+        let control = curveControlPoint(start: start, end: end, layout: layout)
+        return PowerFlowSegment(start: start, end: end, control: control)
     }
 
     private static func adjustPointForCircle(_ point: CGPoint, towards target: CGPoint, layout: PowerFlowLayout) -> CGPoint {
