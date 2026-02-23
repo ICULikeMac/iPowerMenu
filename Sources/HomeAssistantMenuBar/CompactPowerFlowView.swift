@@ -194,7 +194,7 @@ struct CompactPowerComponentsLayout: View {
     }
 
     private func formatBatteryFlow(_ watts: Double) -> String {
-        let prefix = watts > 0 ? "↑" : "↓"
+        let prefix = watts > 0 ? "↓" : "↑"
         return "\(prefix)\(formatWatts(abs(watts)))"
     }
 }
@@ -279,97 +279,38 @@ struct CompactConnectionLines: View {
     let batteryPower: Double
     let homePower: Double
 
-    private let circleRadius: CGFloat = 30 // Improved offset with padding for compact view
-
     var body: some View {
         ZStack {
-            // Static connection lines (very subtle for compact view)
             Path { path in
-                // Solar to Grid
-                addCompactCurvedLine(path: &path,
-                                   start: CGPoint(x: size.width * 0.5, y: size.height * 0.2),
-                                   end: CGPoint(x: size.width * 0.2, y: size.height * 0.5))
-
-                // Solar to Home
-                addCompactCurvedLine(path: &path,
-                                   start: CGPoint(x: size.width * 0.5, y: size.height * 0.2),
-                                   end: CGPoint(x: size.width * 0.8, y: size.height * 0.5))
-
-                // Solar to Battery (vertical)
-                let padding: CGFloat = 3 // Smaller padding for compact view
-                let effectiveRadius = circleRadius + padding
-                path.move(to: CGPoint(x: size.width * 0.5, y: size.height * 0.2 + effectiveRadius))
-                path.addLine(to: CGPoint(x: size.width * 0.5, y: size.height * 0.8 - effectiveRadius))
-
-                // Grid to Battery
-                addCompactCurvedLine(path: &path,
-                                   start: CGPoint(x: size.width * 0.2, y: size.height * 0.5),
-                                   end: CGPoint(x: size.width * 0.5, y: size.height * 0.8))
-
-                // Grid to Home (horizontal)
-                path.move(to: CGPoint(x: size.width * 0.2 + effectiveRadius, y: size.height * 0.5))
-                path.addLine(to: CGPoint(x: size.width * 0.8 - effectiveRadius, y: size.height * 0.5))
-
-                // Battery to Home
-                addCompactCurvedLine(path: &path,
-                                   start: CGPoint(x: size.width * 0.5, y: size.height * 0.8),
-                                   end: CGPoint(x: size.width * 0.8, y: size.height * 0.5))
+                PowerFlowPathBuilder.drawStaticEdges(path: &path, layout: layout)
             }
             .stroke(Color.gray.opacity(0.06), lineWidth: 0.8)
 
-            // Simplified flow indicators (fewer dots, faster animation for menu)
             CompactPowerFlows(
-                size: size,
-                solarPower: solarPower,
-                gridPower: gridPower,
-                batteryPower: batteryPower,
-                homePower: homePower
+                layout: layout,
+                routes: routes
             )
         }
     }
 
-    private func addCompactCurvedLine(path: inout Path, start: CGPoint, end: CGPoint) {
-        let adjustedStart = adjustPointForCircle(start, towards: end)
-        let adjustedEnd = adjustPointForCircle(end, towards: start)
-
-        // Calculate distance-based curve offset for compact view
-        let distance = sqrt(pow(adjustedEnd.x - adjustedStart.x, 2) + pow(adjustedEnd.y - adjustedStart.y, 2))
-        let curveIntensity: CGFloat = min(25, max(12, distance * 0.12)) // Smaller for compact
-
-        // Calculate angle perpendicular to connection line
-        let angle = atan2(adjustedEnd.y - adjustedStart.y, adjustedEnd.x - adjustedStart.x)
-        let perpendicularAngle = angle + .pi / 2
-
-        // Create control point offset perpendicular to line
-        let midX = (adjustedStart.x + adjustedEnd.x) / 2
-        let midY = (adjustedStart.y + adjustedEnd.y) / 2
-
-        let controlPoint = CGPoint(
-            x: midX + cos(perpendicularAngle) * curveIntensity,
-            y: midY + sin(perpendicularAngle) * curveIntensity
+    private var layout: PowerFlowLayout {
+        PowerFlowLayout(
+            size: size,
+            circleRadius: 30,
+            padding: 3,
+            curveScale: 0.12,
+            minCurve: 12,
+            maxCurve: 25
         )
-
-        path.move(to: adjustedStart)
-        path.addQuadCurve(to: adjustedEnd, control: controlPoint)
     }
 
-    private func adjustPointForCircle(_ point: CGPoint, towards target: CGPoint) -> CGPoint {
-        let dx = target.x - point.x
-        let dy = target.y - point.y
-        let distance = sqrt(dx * dx + dy * dy)
-
-        if distance == 0 { return point }
-
-        let unitX = dx / distance
-        let unitY = dy / distance
-
-        // Add extra padding to ensure clean separation
-        let padding: CGFloat = 3 // Smaller padding for compact view
-        let effectiveRadius = circleRadius + padding
-
-        return CGPoint(
-            x: point.x + unitX * effectiveRadius,
-            y: point.y + unitY * effectiveRadius
+    private var routes: [PowerFlowRoute] {
+        PowerFlowMath.calculateRoutes(
+            solarGeneration: solarPower,
+            gridPower: gridPower,
+            batteryPower: batteryPower,
+            homeDemand: homePower,
+            minimumRenderableWatts: 20
         )
     }
 }
@@ -377,61 +318,18 @@ struct CompactConnectionLines: View {
 // MARK: - Compact Power Flows
 
 struct CompactPowerFlows: View {
-    let size: CGSize
-    let solarPower: Double
-    let gridPower: Double
-    let batteryPower: Double
-    let homePower: Double
+    let layout: PowerFlowLayout
+    let routes: [PowerFlowRoute]
 
     var body: some View {
         ZStack {
-            // Show only the most important flows for clarity in compact view
-
-            // Solar to Home
-            if solarPower > 0 && homePower > 0 {
-                CompactFlowIndicator(
-                    start: CGPoint(x: size.width * 0.5, y: size.height * 0.2),
-                    end: CGPoint(x: size.width * 0.8, y: size.height * 0.5),
-                    color: .orange,
-                    curved: true
-                )
-            }
-
-            // Solar to Battery
-            if batteryPower > 0 {
-                CompactFlowIndicator(
-                    start: CGPoint(x: size.width * 0.5, y: size.height * 0.2),
-                    end: CGPoint(x: size.width * 0.5, y: size.height * 0.8),
-                    color: .green,
-                    curved: false
-                )
-            }
-
-            // Battery to Home
-            if batteryPower < 0 {
-                CompactFlowIndicator(
-                    start: CGPoint(x: size.width * 0.5, y: size.height * 0.8),
-                    end: CGPoint(x: size.width * 0.8, y: size.height * 0.5),
-                    color: .yellow,
-                    curved: true
-                )
-            }
-
-            // Grid import/export
-            if gridPower > 0 {
-                CompactFlowIndicator(
-                    start: CGPoint(x: size.width * 0.2, y: size.height * 0.5),
-                    end: CGPoint(x: size.width * 0.8, y: size.height * 0.5),
-                    color: .blue,
-                    curved: false
-                )
-            } else if gridPower < 0 && abs(gridPower) >= 50 {
-                CompactFlowIndicator(
-                    start: CGPoint(x: size.width * 0.5, y: size.height * 0.2),
-                    end: CGPoint(x: size.width * 0.2, y: size.height * 0.5),
-                    color: .purple,
-                    curved: true
-                )
+            ForEach(Array(routes.enumerated()), id: \.offset) { _, route in
+                if let segment = PowerFlowPathBuilder.segment(in: layout, from: route.from, to: route.to) {
+                    CompactFlowIndicator(
+                        segment: segment,
+                        color: route.origin.color
+                    )
+                }
             }
         }
     }
@@ -440,40 +338,13 @@ struct CompactPowerFlows: View {
 // MARK: - Compact Flow Indicator
 
 struct CompactFlowIndicator: View {
-    let start: CGPoint
-    let end: CGPoint
+    let segment: PowerFlowSegment
     let color: Color
-    let curved: Bool
-
-    private let circleRadius: CGFloat = 30
 
     var body: some View {
-        // Single moving dot for compact view
         CompactMovingDot(
-            start: adjustPointForCircle(start, towards: end),
-            end: adjustPointForCircle(end, towards: start),
-            color: color,
-            curved: curved
-        )
-    }
-
-    private func adjustPointForCircle(_ point: CGPoint, towards target: CGPoint) -> CGPoint {
-        let dx = target.x - point.x
-        let dy = target.y - point.y
-        let distance = sqrt(dx * dx + dy * dy)
-
-        if distance == 0 { return point }
-
-        let unitX = dx / distance
-        let unitY = dy / distance
-
-        // Add extra padding to ensure clean separation
-        let padding: CGFloat = 3 // Smaller padding for compact view
-        let effectiveRadius = circleRadius + padding
-
-        return CGPoint(
-            x: point.x + unitX * effectiveRadius,
-            y: point.y + unitY * effectiveRadius
+            segment: segment,
+            color: color
         )
     }
 }
@@ -481,37 +352,18 @@ struct CompactFlowIndicator: View {
 // MARK: - Compact Moving Dot
 
 struct CompactMovingDot: View {
-    let start: CGPoint
-    let end: CGPoint
+    let segment: PowerFlowSegment
     let color: Color
-    let curved: Bool
 
     @State private var progress: CGFloat = 0
 
     var currentPosition: CGPoint {
-        if curved {
-            // Calculate distance-based curve offset for compact view
-            let distance = sqrt(pow(end.x - start.x, 2) + pow(end.y - start.y, 2))
-            let curveIntensity: CGFloat = min(25, max(12, distance * 0.12)) // Smaller for compact
-
-            // Calculate angle perpendicular to connection line
-            let angle = atan2(end.y - start.y, end.x - start.x)
-            let perpendicularAngle = angle + .pi / 2
-
-            // Create control point offset perpendicular to line
-            let midX = (start.x + end.x) / 2
-            let midY = (start.y + end.y) / 2
-
-            let controlPoint = CGPoint(
-                x: midX + cos(perpendicularAngle) * curveIntensity,
-                y: midY + sin(perpendicularAngle) * curveIntensity
-            )
-
-            return quadraticBezierPoint(t: progress, p0: start, p1: controlPoint, p2: end)
+        if let control = segment.control {
+            return quadraticBezierPoint(t: progress, p0: segment.start, p1: control, p2: segment.end)
         } else {
             return CGPoint(
-                x: start.x + (end.x - start.x) * progress,
-                y: start.y + (end.y - start.y) * progress
+                x: segment.start.x + (segment.end.x - segment.start.x) * progress,
+                y: segment.start.y + (segment.end.y - segment.start.y) * progress
             )
         }
     }

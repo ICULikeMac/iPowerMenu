@@ -201,7 +201,7 @@ struct PowerComponentsLayout: View {
     }
 
     private func formatBatteryFlow(_ watts: Double) -> String {
-        let prefix = watts > 0 ? "↑" : "↓"
+        let prefix = watts > 0 ? "↓" : "↑"
         return "\(prefix) \(formatWatts(abs(watts)))"
     }
 }
@@ -288,196 +288,61 @@ struct PowerFlowConnections: View {
 
     var body: some View {
         ZStack {
-            // Draw the connection lines (always visible)
-            ConnectionLines(size: size)
+            ConnectionLines(layout: layout)
 
-            // Animated power flow indicators on direct connections
-
-            // Solar flows
-            if solarPower > 0 {
-                // Solar to Home (direct consumption)
-                if homePower > 0 && solarPower >= homePower {
+            ForEach(Array(routes.enumerated()), id: \.offset) { _, route in
+                if let segment = PowerFlowPathBuilder.segment(in: layout, from: route.from, to: route.to) {
                     DirectFlowIndicator(
-                        start: CGPoint(x: size.width * 0.5, y: size.height * 0.2),
-                        end: CGPoint(x: size.width * 0.8, y: size.height * 0.5),
-                        color: .orange,
-                        power: min(solarPower, homePower),
-                        curved: true
-                    )
-                }
-
-                // Solar to Battery (charging excess)
-                if batteryPower > 0 {
-                    DirectFlowIndicator(
-                        start: CGPoint(x: size.width * 0.5, y: size.height * 0.2),
-                        end: CGPoint(x: size.width * 0.5, y: size.height * 0.8),
-                        color: .green,
-                        power: batteryPower,
-                        curved: false
-                    )
-                }
-
-                // Solar to Grid (export excess) - only if >= 50W
-                if gridPower < 0 && abs(gridPower) >= 50 {
-                    DirectFlowIndicator(
-                        start: CGPoint(x: size.width * 0.5, y: size.height * 0.2),
-                        end: CGPoint(x: size.width * 0.2, y: size.height * 0.5),
-                        color: .purple,
-                        power: abs(gridPower),
-                        curved: true
-                    )
-                }
-            }
-
-            // Grid flows
-            if gridPower > 0 {
-                // Grid to Home (import for consumption)
-                if homePower > solarPower {
-                    DirectFlowIndicator(
-                        start: CGPoint(x: size.width * 0.2, y: size.height * 0.5),
-                        end: CGPoint(x: size.width * 0.8, y: size.height * 0.5),
-                        color: .blue,
-                        power: gridPower,
-                        curved: false
-                    )
-                }
-
-                // Grid to Battery (charging from grid)
-                if batteryPower > 0 && solarPower < batteryPower {
-                    DirectFlowIndicator(
-                        start: CGPoint(x: size.width * 0.2, y: size.height * 0.5),
-                        end: CGPoint(x: size.width * 0.5, y: size.height * 0.8),
-                        color: .blue,
-                        power: batteryPower - solarPower,
-                        curved: true
-                    )
-                }
-            }
-
-            // Battery flows
-            if batteryPower < 0 {
-                // Battery to Home (discharging)
-                DirectFlowIndicator(
-                    start: CGPoint(x: size.width * 0.5, y: size.height * 0.8),
-                    end: CGPoint(x: size.width * 0.8, y: size.height * 0.5),
-                    color: .yellow,
-                    power: abs(batteryPower),
-                    curved: true
-                )
-
-                // Battery to Grid (export from battery) - only if >= 50W
-                if gridPower < 0 && abs(gridPower) > solarPower && (abs(gridPower) - solarPower) >= 50 {
-                    DirectFlowIndicator(
-                        start: CGPoint(x: size.width * 0.5, y: size.height * 0.8),
-                        end: CGPoint(x: size.width * 0.2, y: size.height * 0.5),
-                        color: .purple,
-                        power: abs(gridPower) - solarPower,
-                        curved: true
+                        segment: segment,
+                        color: route.origin.color,
+                        power: route.watts
                     )
                 }
             }
         }
+    }
+
+    private var layout: PowerFlowLayout {
+        PowerFlowLayout(
+            size: size,
+            circleRadius: 50,
+            padding: 5,
+            curveScale: 0.15,
+            minCurve: 20,
+            maxCurve: 50
+        )
+    }
+
+    private var routes: [PowerFlowRoute] {
+        PowerFlowMath.calculateRoutes(
+            solarGeneration: solarPower,
+            gridPower: gridPower,
+            batteryPower: batteryPower,
+            homeDemand: homePower,
+            minimumRenderableWatts: 20
+        )
     }
 }
 
 // MARK: - Static Connection Lines
 
 struct ConnectionLines: View {
-    let size: CGSize
-
-    private let circleRadius: CGFloat = 50 // Proper offset with padding to avoid intersections
+    let layout: PowerFlowLayout
 
     var body: some View {
         Path { path in
-            // Solar (0.5, 0.2) to Grid (0.2, 0.5)
-            addCurvedLine(path: &path,
-                         start: CGPoint(x: size.width * 0.5, y: size.height * 0.2),
-                         end: CGPoint(x: size.width * 0.2, y: size.height * 0.5))
-
-            // Solar (0.5, 0.2) to Home (0.8, 0.5)
-            addCurvedLine(path: &path,
-                         start: CGPoint(x: size.width * 0.5, y: size.height * 0.2),
-                         end: CGPoint(x: size.width * 0.8, y: size.height * 0.5))
-
-            // Solar (0.5, 0.2) to Battery (0.5, 0.8) - direct vertical
-            let padding: CGFloat = 5
-            let effectiveRadius = circleRadius + padding
-            path.move(to: CGPoint(x: size.width * 0.5, y: size.height * 0.2 + effectiveRadius))
-            path.addLine(to: CGPoint(x: size.width * 0.5, y: size.height * 0.8 - effectiveRadius))
-
-            // Grid (0.2, 0.5) to Battery (0.5, 0.8)
-            addCurvedLine(path: &path,
-                         start: CGPoint(x: size.width * 0.2, y: size.height * 0.5),
-                         end: CGPoint(x: size.width * 0.5, y: size.height * 0.8))
-
-            // Grid (0.2, 0.5) to Home (0.8, 0.5) - direct horizontal
-            path.move(to: CGPoint(x: size.width * 0.2 + effectiveRadius, y: size.height * 0.5))
-            path.addLine(to: CGPoint(x: size.width * 0.8 - effectiveRadius, y: size.height * 0.5))
-
-            // Battery (0.5, 0.8) to Home (0.8, 0.5)
-            addCurvedLine(path: &path,
-                         start: CGPoint(x: size.width * 0.5, y: size.height * 0.8),
-                         end: CGPoint(x: size.width * 0.8, y: size.height * 0.5))
+            PowerFlowPathBuilder.drawStaticEdges(path: &path, layout: layout)
         }
         .stroke(Color.gray.opacity(0.08), lineWidth: 1)
-    }
-
-    private func addCurvedLine(path: inout Path, start: CGPoint, end: CGPoint) {
-        let adjustedStart = adjustPointForCircle(start, towards: end)
-        let adjustedEnd = adjustPointForCircle(end, towards: start)
-
-        // Calculate distance-based curve offset for better visual flow
-        let distance = sqrt(pow(adjustedEnd.x - adjustedStart.x, 2) + pow(adjustedEnd.y - adjustedStart.y, 2))
-        let curveIntensity: CGFloat = min(50, max(20, distance * 0.15))
-
-        // Calculate angle perpendicular to connection line
-        let angle = atan2(adjustedEnd.y - adjustedStart.y, adjustedEnd.x - adjustedStart.x)
-        let perpendicularAngle = angle + .pi / 2
-
-        // Create control point offset perpendicular to line
-        let midX = (adjustedStart.x + adjustedEnd.x) / 2
-        let midY = (adjustedStart.y + adjustedEnd.y) / 2
-
-        let controlPoint = CGPoint(
-            x: midX + cos(perpendicularAngle) * curveIntensity,
-            y: midY + sin(perpendicularAngle) * curveIntensity
-        )
-
-        path.move(to: adjustedStart)
-        path.addQuadCurve(to: adjustedEnd, control: controlPoint)
-    }
-
-    private func adjustPointForCircle(_ point: CGPoint, towards target: CGPoint) -> CGPoint {
-        let dx = target.x - point.x
-        let dy = target.y - point.y
-        let distance = sqrt(dx * dx + dy * dy)
-
-        if distance == 0 { return point }
-
-        let unitX = dx / distance
-        let unitY = dy / distance
-
-        // Add extra padding to ensure clean separation
-        let padding: CGFloat = 5
-        let effectiveRadius = circleRadius + padding
-
-        return CGPoint(
-            x: point.x + unitX * effectiveRadius,
-            y: point.y + unitY * effectiveRadius
-        )
     }
 }
 
 // MARK: - Direct Flow Indicator (for curved and straight paths)
 
 struct DirectFlowIndicator: View {
-    let start: CGPoint
-    let end: CGPoint
+    let segment: PowerFlowSegment
     let color: Color
     let power: Double
-    let curved: Bool
-
-    private let circleRadius: CGFloat = 50
 
     private var dotCount: Int {
         min(5, max(1, Int(power / 500)))
@@ -491,75 +356,33 @@ struct DirectFlowIndicator: View {
         ZStack {
             ForEach(0..<dotCount, id: \.self) { index in
                 MovingDotDirect(
-                    start: adjustPointForCircle(start, towards: end),
-                    end: adjustPointForCircle(end, towards: start),
+                    segment: segment,
                     color: color,
-                    curved: curved,
                     delay: Double(index) * (animationSpeed / Double(dotCount)),
                     duration: animationSpeed
                 )
             }
         }
     }
-
-    private func adjustPointForCircle(_ point: CGPoint, towards target: CGPoint) -> CGPoint {
-        let dx = target.x - point.x
-        let dy = target.y - point.y
-        let distance = sqrt(dx * dx + dy * dy)
-
-        if distance == 0 { return point }
-
-        let unitX = dx / distance
-        let unitY = dy / distance
-
-        // Add extra padding to ensure clean separation
-        let padding: CGFloat = 5
-        let effectiveRadius = circleRadius + padding
-
-        return CGPoint(
-            x: point.x + unitX * effectiveRadius,
-            y: point.y + unitY * effectiveRadius
-        )
-    }
 }
 
 // MARK: - Moving Dot for Direct Connections
 
 struct MovingDotDirect: View {
-    let start: CGPoint
-    let end: CGPoint
+    let segment: PowerFlowSegment
     let color: Color
-    let curved: Bool
     let delay: Double
     let duration: Double
 
     @State private var progress: CGFloat = 0
 
     var currentPosition: CGPoint {
-        if curved {
-            // Calculate distance-based curve offset for consistent flow
-            let distance = sqrt(pow(end.x - start.x, 2) + pow(end.y - start.y, 2))
-            let curveIntensity: CGFloat = min(50, max(20, distance * 0.15))
-
-            // Calculate angle perpendicular to connection line
-            let angle = atan2(end.y - start.y, end.x - start.x)
-            let perpendicularAngle = angle + .pi / 2
-
-            // Create control point offset perpendicular to line
-            let midX = (start.x + end.x) / 2
-            let midY = (start.y + end.y) / 2
-
-            let controlPoint = CGPoint(
-                x: midX + cos(perpendicularAngle) * curveIntensity,
-                y: midY + sin(perpendicularAngle) * curveIntensity
-            )
-
-            return quadraticBezierPoint(t: progress, p0: start, p1: controlPoint, p2: end)
+        if let control = segment.control {
+            return quadraticBezierPoint(t: progress, p0: segment.start, p1: control, p2: segment.end)
         } else {
-            // Straight line
             return CGPoint(
-                x: start.x + (end.x - start.x) * progress,
-                y: start.y + (end.y - start.y) * progress
+                x: segment.start.x + (segment.end.x - segment.start.x) * progress,
+                y: segment.start.y + (segment.end.y - segment.start.y) * progress
             )
         }
     }

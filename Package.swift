@@ -16,7 +16,12 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "HomeAssistantMenuBar",
-            dependencies: []
+            dependencies: [],
+            exclude: ["Info.plist"]
+        ),
+        .testTarget(
+            name: "HomeAssistantMenuBarTests",
+            dependencies: ["HomeAssistantMenuBar"]
         )
     ]
 )

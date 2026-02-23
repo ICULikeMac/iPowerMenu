@@ -11,7 +11,7 @@ class MenuBarController: ObservableObject {
     
     // MARK: - Properties
     private var statusItem: NSStatusItem
-    private var contentView: StatusItemContentView?
+    private var statusItemContentView: StatusItemContentView?
     private let homeAssistantClient = HomeAssistantClient()
     private var refreshTimer: Timer?
     
@@ -66,18 +66,7 @@ class MenuBarController: ObservableObject {
         quitItem.target = self
 
         statusItem.menu = menu
-
-        // Install custom vertically-centered content view for stacked layout
-        let view = StatusItemContentView()
-        view.onClick = { [weak self] in
-            guard let self = self else { return }
-            // For custom views, we need to manually trigger the menu
-            if let menu = self.statusItem.menu {
-                self.statusItem.popUpMenu(menu)
-            }
-        }
-        statusItem.view = view
-        contentView = view
+        configureStatusItemContentView()
         
         // Initialize entity values
         for entityType in EntityType.allCases {
@@ -86,9 +75,29 @@ class MenuBarController: ObservableObject {
         
         updateMenuBarTitle()
     }
-    
-    @objc private func statusItemClicked() {
-        // Menu will show automatically
+
+    private func configureStatusItemContentView() {
+        guard statusItemContentView == nil, let button = statusItem.button else { return }
+
+        // Keep the native button for highlight/menu behavior and center custom content within it.
+        button.title = ""
+        button.attributedTitle = NSAttributedString(string: "")
+
+        let contentView = StatusItemContentView(frame: button.bounds)
+        contentView.translatesAutoresizingMaskIntoConstraints = false
+        contentView.onClick = { [weak self] in
+            self?.statusItem.button?.performClick(nil)
+        }
+        button.addSubview(contentView)
+
+        NSLayoutConstraint.activate([
+            contentView.leadingAnchor.constraint(equalTo: button.leadingAnchor),
+            contentView.trailingAnchor.constraint(equalTo: button.trailingAnchor),
+            contentView.topAnchor.constraint(equalTo: button.topAnchor),
+            contentView.bottomAnchor.constraint(equalTo: button.bottomAnchor),
+        ])
+
+        statusItemContentView = contentView
     }
     
     @objc private func refreshNow() {
@@ -284,12 +293,9 @@ class MenuBarController: ObservableObject {
         para.maximumLineHeight = CGFloat(lineH)
         attributed.addAttribute(.paragraphStyle, value: para, range: NSRange(location: 0, length: attributed.length))
 
-        if let view = contentView {
-            view.setAttributedTitle(attributed)
-            statusItem.length = view.intrinsicContentSize.width
-        } else if let button = statusItem.button {
-            button.attributedTitle = attributed
-        }
+        configureStatusItemContentView()
+        statusItemContentView?.setAttributedTitle(attributed)
+        statusItem.length = attributed.size().width + 6
     }
 
     
