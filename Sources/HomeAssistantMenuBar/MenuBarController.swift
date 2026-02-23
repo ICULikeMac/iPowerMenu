@@ -380,13 +380,7 @@ class MenuBarController: ObservableObject {
     }
 
     private func formatCurrency(_ value: String) -> String {
-        if value == "N/A" {
-            return "N/A"
-        }
-        if let price = Double(value) {
-            return String(format: "$%.3f/kWh", price)
-        }
-        return "$---.---/kWh"
+        CurrencyFormatting.format(raw: value)
     }
     
     deinit {

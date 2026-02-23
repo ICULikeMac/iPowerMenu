@@ -138,6 +138,7 @@ struct SettingsView: View {
                         // Grid and Home
                         EntityConfigRow(entityType: .gridUsage, entityIds: $entityIds)
                         EntityConfigRow(entityType: .homePower, entityIds: $entityIds)
+                        EntityConfigRow(entityType: .carPower, entityIds: $entityIds)
 
                         // Pricing Configuration (grouped together)
                         VStack(alignment: .leading, spacing: 8) {

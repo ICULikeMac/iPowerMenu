@@ -36,6 +36,7 @@ struct PowerFlowView: View {
                         solarPower: solarPowerValue,
                         gridPower: gridPowerValue,
                         batteryPower: batteryPowerValue,
+                        carPower: carPowerValue,
                         homePower: homePowerValue
                     )
 
@@ -87,6 +88,10 @@ struct PowerFlowView: View {
 
     private var batterySOCValue: Double {
         extractNumericValue(from: menuBarController.entityValues[.battery] ?? "0") ?? 0
+    }
+
+    private var carPowerValue: Double {
+        extractNumericValue(from: menuBarController.entityValues[.carPower] ?? "0") ?? 0
     }
 
     private var homePowerValue: Double {
@@ -204,6 +209,7 @@ struct PowerComponentsLayout: View {
         let prefix = watts > 0 ? "↓" : "↑"
         return "\(prefix) \(formatWatts(abs(watts)))"
     }
+
 }
 
 // MARK: - Individual Power Component
@@ -284,11 +290,12 @@ struct PowerFlowConnections: View {
     let solarPower: Double
     let gridPower: Double
     let batteryPower: Double
+    let carPower: Double
     let homePower: Double
 
     var body: some View {
         ZStack {
-            ConnectionLines(layout: layout)
+            DottedConnectionLines(layout: layout)
 
             ForEach(Array(routes.enumerated()), id: \.offset) { _, route in
                 if let segment = PowerFlowPathBuilder.segment(in: layout, from: route.from, to: route.to) {
@@ -306,7 +313,7 @@ struct PowerFlowConnections: View {
         PowerFlowLayout(
             size: size,
             circleRadius: 50,
-            padding: 5,
+            padding: 0,
             curveScale: 0.15,
             minCurve: 20,
             maxCurve: 50
@@ -318,22 +325,24 @@ struct PowerFlowConnections: View {
             solarGeneration: solarPower,
             gridPower: gridPower,
             batteryPower: batteryPower,
+            carPower: carPower,
             homeDemand: homePower,
             minimumRenderableWatts: 20
         )
     }
 }
 
-// MARK: - Static Connection Lines
-
-struct ConnectionLines: View {
+struct DottedConnectionLines: View {
     let layout: PowerFlowLayout
 
     var body: some View {
         Path { path in
-            PowerFlowPathBuilder.drawStaticEdges(path: &path, layout: layout)
+            PowerFlowPathBuilder.drawDottedVisibleEdges(path: &path, layout: layout)
         }
-        .stroke(Color.gray.opacity(0.08), lineWidth: 1)
+        .stroke(
+            Color.gray.opacity(0.22),
+            style: StrokeStyle(lineWidth: 1, lineCap: .round, dash: [3, 6])
+        )
     }
 }
 

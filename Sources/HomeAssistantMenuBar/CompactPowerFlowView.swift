@@ -31,6 +31,7 @@ struct CompactPowerFlowView: View {
                         solarPower: solarPowerValue,
                         gridPower: gridPowerValue,
                         batteryPower: batteryPowerValue,
+                        carPower: carPowerValue,
                         homePower: homePowerValue
                     )
 
@@ -80,6 +81,10 @@ struct CompactPowerFlowView: View {
 
     private var batterySOCValue: Double {
         extractNumericValue(from: menuBarController.entityValues[.battery] ?? "0") ?? 0
+    }
+
+    private var carPowerValue: Double {
+        extractNumericValue(from: menuBarController.entityValues[.carPower] ?? "0") ?? 0
     }
 
     private var homePowerValue: Double {
@@ -197,6 +202,7 @@ struct CompactPowerComponentsLayout: View {
         let prefix = watts > 0 ? "↓" : "↑"
         return "\(prefix)\(formatWatts(abs(watts)))"
     }
+
 }
 
 // MARK: - Compact Power Component
@@ -277,14 +283,12 @@ struct CompactConnectionLines: View {
     let solarPower: Double
     let gridPower: Double
     let batteryPower: Double
+    let carPower: Double
     let homePower: Double
 
     var body: some View {
         ZStack {
-            Path { path in
-                PowerFlowPathBuilder.drawStaticEdges(path: &path, layout: layout)
-            }
-            .stroke(Color.gray.opacity(0.06), lineWidth: 0.8)
+            CompactDottedConnectionLines(layout: layout)
 
             CompactPowerFlows(
                 layout: layout,
@@ -297,7 +301,7 @@ struct CompactConnectionLines: View {
         PowerFlowLayout(
             size: size,
             circleRadius: 30,
-            padding: 3,
+            padding: 0,
             curveScale: 0.12,
             minCurve: 12,
             maxCurve: 25
@@ -309,8 +313,23 @@ struct CompactConnectionLines: View {
             solarGeneration: solarPower,
             gridPower: gridPower,
             batteryPower: batteryPower,
+            carPower: carPower,
             homeDemand: homePower,
             minimumRenderableWatts: 20
+        )
+    }
+}
+
+struct CompactDottedConnectionLines: View {
+    let layout: PowerFlowLayout
+
+    var body: some View {
+        Path { path in
+            PowerFlowPathBuilder.drawDottedVisibleEdges(path: &path, layout: layout)
+        }
+        .stroke(
+            Color.gray.opacity(0.2),
+            style: StrokeStyle(lineWidth: 0.8, lineCap: .round, dash: [2, 5])
         )
     }
 }
@@ -327,7 +346,8 @@ struct CompactPowerFlows: View {
                 if let segment = PowerFlowPathBuilder.segment(in: layout, from: route.from, to: route.to) {
                     CompactFlowIndicator(
                         segment: segment,
-                        color: route.origin.color
+                        color: route.origin.color,
+                        power: route.watts
                     )
                 }
             }
@@ -340,12 +360,18 @@ struct CompactPowerFlows: View {
 struct CompactFlowIndicator: View {
     let segment: PowerFlowSegment
     let color: Color
+    let power: Double
 
     var body: some View {
         CompactMovingDot(
             segment: segment,
-            color: color
+            color: color,
+            duration: animationDuration
         )
+    }
+
+    private var animationDuration: Double {
+        max(0.6, min(2.5, 3.0 - (power / 1000)))
     }
 }
 
@@ -354,6 +380,7 @@ struct CompactFlowIndicator: View {
 struct CompactMovingDot: View {
     let segment: PowerFlowSegment
     let color: Color
+    let duration: Double
 
     @State private var progress: CGFloat = 0
 
@@ -386,7 +413,7 @@ struct CompactMovingDot: View {
             .position(currentPosition)
             .onAppear {
                 withAnimation(
-                    Animation.linear(duration: 2.0) // Fixed duration for menu
+                    Animation.linear(duration: duration)
                         .repeatForever(autoreverses: false)
                 ) {
                     progress = 1.0

@@ -17,25 +17,15 @@ struct PowerFlowLayout {
         ]
     }
 
-    var allEdges: [PowerFlowEdge] {
+    var visibleEdges: [(PowerFlowNode, PowerFlowNode)] {
         [
-            .init(a: .solar, b: .grid, curved: true),
-            .init(a: .solar, b: .home, curved: true),
-            .init(a: .solar, b: .battery, curved: false),
-            .init(a: .grid, b: .battery, curved: true),
-            .init(a: .grid, b: .home, curved: false),
-            .init(a: .battery, b: .home, curved: true)
+            (.solar, .grid),
+            (.solar, .home),
+            (.solar, .battery),
+            (.grid, .home),
+            (.grid, .battery),
+            (.battery, .home)
         ]
-    }
-}
-
-struct PowerFlowEdge {
-    let a: PowerFlowNode
-    let b: PowerFlowNode
-    let curved: Bool
-
-    func matches(_ from: PowerFlowNode, _ to: PowerFlowNode) -> Bool {
-        (a == from && b == to) || (a == to && b == from)
     }
 }
 
@@ -52,11 +42,9 @@ enum PowerFlowPathBuilder {
         to: PowerFlowNode
     ) -> PowerFlowSegment? {
         guard
-            let edge = layout.allEdges.first(where: { $0.matches(from, to) }),
+            from != to,
             let fromCenter = layout.nodeCenters[from],
-            let toCenter = layout.nodeCenters[to],
-            let canonicalStartCenter = layout.nodeCenters[edge.a],
-            let canonicalEndCenter = layout.nodeCenters[edge.b]
+            let toCenter = layout.nodeCenters[to]
         else {
             return nil
         }
@@ -64,20 +52,21 @@ enum PowerFlowPathBuilder {
         let start = adjustPointForCircle(fromCenter, towards: toCenter, layout: layout)
         let end = adjustPointForCircle(toCenter, towards: fromCenter, layout: layout)
 
-        guard edge.curved else {
+        let dx = abs(end.x - start.x)
+        let dy = abs(end.y - start.y)
+        let shouldCurve = dx > 8 && dy > 8
+
+        guard shouldCurve else {
             return PowerFlowSegment(start: start, end: end, control: nil)
         }
 
-        let canonicalStart = adjustPointForCircle(canonicalStartCenter, towards: canonicalEndCenter, layout: layout)
-        let canonicalEnd = adjustPointForCircle(canonicalEndCenter, towards: canonicalStartCenter, layout: layout)
-        let control = curveControlPoint(start: canonicalStart, end: canonicalEnd, layout: layout)
-
+        let control = curveControlPoint(start: start, end: end, layout: layout)
         return PowerFlowSegment(start: start, end: end, control: control)
     }
 
-    static func drawStaticEdges(path: inout Path, layout: PowerFlowLayout) {
-        for edge in layout.allEdges {
-            guard let segment = segment(in: layout, from: edge.a, to: edge.b) else { continue }
+    static func drawDottedVisibleEdges(path: inout Path, layout: PowerFlowLayout) {
+        for (from, to) in layout.visibleEdges {
+            guard let segment = segment(in: layout, from: from, to: to) else { continue }
             path.move(to: segment.start)
             if let control = segment.control {
                 path.addQuadCurve(to: segment.end, control: control)
@@ -129,6 +118,8 @@ extension PowerFlowOrigin {
             return .blue
         case .battery:
             return Color(red: 0.95, green: 0.72, blue: 0.10)
+        case .car:
+            return Color(red: 0.09, green: 0.70, blue: 0.78)
         }
     }
 }

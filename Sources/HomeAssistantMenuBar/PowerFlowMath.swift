@@ -4,6 +4,7 @@ enum PowerFlowNode: Hashable {
     case solar
     case grid
     case battery
+    case car
     case home
 }
 
@@ -11,6 +12,7 @@ enum PowerFlowOrigin {
     case solar
     case grid
     case battery
+    case car
 }
 
 struct PowerFlowRoute {
@@ -25,75 +27,59 @@ enum PowerFlowMath {
         solarGeneration: Double,
         gridPower: Double,
         batteryPower: Double,
+        carPower: Double,
         homeDemand: Double,
         minimumRenderableWatts: Double = 20
     ) -> [PowerFlowRoute] {
         var routes: [PowerFlowRoute] = []
 
-        var solarAvailable = max(0, solarGeneration)
-        let gridImport = max(0, gridPower)
-        let gridExport = max(0, -gridPower)
-        let batteryChargeNeed = max(0, batteryPower)
-        let batteryDischargeAvailable = max(0, -batteryPower)
-        var homeRemaining = max(0, homeDemand)
+        var availableSources: [PowerFlowNode: Double] = [
+            .solar: max(0, solarGeneration),
+            .battery: max(0, -batteryPower),
+            .car: max(0, -carPower),
+            .grid: max(0, gridPower)
+        ]
 
-        // Solar serves home first.
-        let solarToHome = min(solarAvailable, homeRemaining)
-        appendRoute(&routes, from: .solar, to: .home, watts: solarToHome, minimumRenderableWatts: minimumRenderableWatts)
-        solarAvailable -= solarToHome
-        homeRemaining -= solarToHome
+        let sinks: [(node: PowerFlowNode, demand: Double)] = [
+            (.home, max(0, homeDemand)),
+            (.battery, max(0, batteryPower)),
+            (.car, max(0, carPower)),
+            (.grid, max(0, -gridPower))
+        ]
 
-        var batteryDischargeRemaining = batteryDischargeAvailable
-        var gridImportRemaining = gridImport
-
-        // Remaining home demand is split proportionally across battery and grid import.
-        if homeRemaining > 0 {
-            let availableForHome = batteryDischargeRemaining + gridImportRemaining
-            if availableForHome > 0 {
-                let allocatedHome = min(homeRemaining, availableForHome)
-                let batteryToHome = allocatedHome * (batteryDischargeRemaining / availableForHome)
-                let gridToHome = allocatedHome * (gridImportRemaining / availableForHome)
-
-                appendRoute(&routes, from: .battery, to: .home, watts: batteryToHome, minimumRenderableWatts: minimumRenderableWatts)
-                appendRoute(&routes, from: .grid, to: .home, watts: gridToHome, minimumRenderableWatts: minimumRenderableWatts)
-
-                batteryDischargeRemaining -= batteryToHome
-                gridImportRemaining -= gridToHome
-                homeRemaining -= allocatedHome
-            }
-        }
-
-        // Battery charging uses solar excess first, then any remaining grid import.
-        var chargingRemaining = batteryChargeNeed
-        if chargingRemaining > 0 {
-            let solarToBattery = min(solarAvailable, chargingRemaining)
-            appendRoute(&routes, from: .solar, to: .battery, watts: solarToBattery, minimumRenderableWatts: minimumRenderableWatts)
-            solarAvailable -= solarToBattery
-            chargingRemaining -= solarToBattery
-
-            let gridToBattery = min(gridImportRemaining, chargingRemaining)
-            appendRoute(&routes, from: .grid, to: .battery, watts: gridToBattery, minimumRenderableWatts: minimumRenderableWatts)
-            gridImportRemaining -= gridToBattery
-            chargingRemaining -= gridToBattery
-        }
-
-        // Grid export is split proportionally across available excess origins.
-        if gridExport > 0 {
-            let solarExcess = max(0, solarAvailable)
-            let batteryExcess = max(0, batteryDischargeRemaining)
-            let totalExcess = solarExcess + batteryExcess
-
-            if totalExcess > 0 {
-                let dispatchedExport = min(gridExport, totalExcess)
-                let solarToGrid = dispatchedExport * (solarExcess / totalExcess)
-                let batteryToGrid = dispatchedExport * (batteryExcess / totalExcess)
-
-                appendRoute(&routes, from: .solar, to: .grid, watts: solarToGrid, minimumRenderableWatts: minimumRenderableWatts)
-                appendRoute(&routes, from: .battery, to: .grid, watts: batteryToGrid, minimumRenderableWatts: minimumRenderableWatts)
+        for sink in sinks where sink.demand > 0 {
+            let allocations = allocateProportionally(from: &availableSources, demand: sink.demand)
+            for (sourceNode, watts) in allocations {
+                appendRoute(
+                    &routes,
+                    from: sourceNode,
+                    to: sink.node,
+                    watts: watts,
+                    minimumRenderableWatts: minimumRenderableWatts
+                )
             }
         }
 
         return routes
+    }
+
+    private static func allocateProportionally(
+        from sources: inout [PowerFlowNode: Double],
+        demand: Double
+    ) -> [PowerFlowNode: Double] {
+        let totalAvailable = sources.values.reduce(0, +)
+        guard totalAvailable > 0, demand > 0 else { return [:] }
+
+        let allocatedDemand = min(demand, totalAvailable)
+        var allocations: [PowerFlowNode: Double] = [:]
+
+        for (node, available) in sources where available > 0 {
+            let share = allocatedDemand * (available / totalAvailable)
+            allocations[node] = share
+            sources[node] = max(0, available - share)
+        }
+
+        return allocations
     }
 
     private static func appendRoute(
@@ -113,6 +99,8 @@ enum PowerFlowMath {
             origin = .grid
         case .battery:
             origin = .battery
+        case .car:
+            origin = .car
         case .home:
             return
         }

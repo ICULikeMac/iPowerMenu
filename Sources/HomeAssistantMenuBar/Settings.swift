@@ -4,6 +4,7 @@ import Foundation
 enum EntityType: String, CaseIterable, Codable {
     case solar = "solar"
     case battery = "battery"
+    case carPower = "carPower"
     case batteryCharging = "batteryCharging"
     case batteryDischarging = "batteryDischarging"
     case gridUsage = "gridUsage"
@@ -15,6 +16,7 @@ enum EntityType: String, CaseIterable, Codable {
         switch self {
         case .solar: return "Solar Power"
         case .battery: return "Battery SOC"
+        case .carPower: return "Car Power"
         case .batteryCharging: return "Battery Charging"
         case .batteryDischarging: return "Battery Discharging"
         case .gridUsage: return "Grid"
@@ -37,6 +39,7 @@ enum EntityType: String, CaseIterable, Codable {
         switch self {
         case .solar: return "sun.min"
         case .battery: return "bolt.house"
+        case .carPower: return "car.fill"
         case .batteryCharging: return "bolt.house.fill"
         case .batteryDischarging: return "bolt.house"
         case .gridUsage: return "bolt"
@@ -48,7 +51,7 @@ enum EntityType: String, CaseIterable, Codable {
 
     var unitType: UnitType {
         switch self {
-        case .solar, .batteryCharging, .batteryDischarging, .gridUsage, .homePower: return .watts
+        case .solar, .carPower, .batteryCharging, .batteryDischarging, .gridUsage, .homePower: return .watts
         case .battery: return .percentage
         case .purchasePrice, .feedInTariff: return .currency
         }
@@ -58,6 +61,7 @@ enum EntityType: String, CaseIterable, Codable {
         switch self {
         case .solar: return "sensor.solar_power"
         case .battery: return "sensor.battery_soc"
+        case .carPower: return "sensor.car_power"
         case .batteryCharging: return "sensor.battery_charging_power"
         case .batteryDischarging: return "sensor.battery_discharging_power"
         case .gridUsage: return "sensor.grid_usage"
@@ -111,6 +115,12 @@ class Settings: ObservableObject {
     @Published var batteryEntityId: String {
         didSet {
             UserDefaults.standard.set(batteryEntityId, forKey: "batteryEntityId")
+        }
+    }
+
+    @Published var carPowerEntityId: String {
+        didSet {
+            UserDefaults.standard.set(carPowerEntityId, forKey: "carPowerEntityId")
         }
     }
 
@@ -168,6 +178,7 @@ class Settings: ObservableObject {
         self.accessToken = UserDefaults.standard.string(forKey: "accessToken") ?? ""
         self.solarEntityId = UserDefaults.standard.string(forKey: "solarEntityId") ?? EntityType.solar.defaultEntityId
         self.batteryEntityId = UserDefaults.standard.string(forKey: "batteryEntityId") ?? EntityType.battery.defaultEntityId
+        self.carPowerEntityId = UserDefaults.standard.string(forKey: "carPowerEntityId") ?? EntityType.carPower.defaultEntityId
         self.batteryChargingEntityId = UserDefaults.standard.string(forKey: "batteryChargingEntityId") ?? EntityType.batteryCharging.defaultEntityId
         self.batteryDischargingEntityId = UserDefaults.standard.string(forKey: "batteryDischargingEntityId") ?? EntityType.batteryDischarging.defaultEntityId
         self.gridUsageEntityId = UserDefaults.standard.string(forKey: "gridUsageEntityId") ?? EntityType.gridUsage.defaultEntityId
@@ -208,6 +219,7 @@ class Settings: ObservableObject {
         switch type {
         case .solar: return solarEntityId
         case .battery: return batteryEntityId
+        case .carPower: return carPowerEntityId
         case .batteryCharging: return batteryChargingEntityId
         case .batteryDischarging: return batteryDischargingEntityId
         case .gridUsage: return gridUsageEntityId
@@ -221,6 +233,7 @@ class Settings: ObservableObject {
         switch type {
         case .solar: self.solarEntityId = entityId
         case .battery: self.batteryEntityId = entityId
+        case .carPower: self.carPowerEntityId = entityId
         case .batteryCharging: self.batteryChargingEntityId = entityId
         case .batteryDischarging: self.batteryDischargingEntityId = entityId
         case .gridUsage: self.gridUsageEntityId = entityId
@@ -249,6 +262,7 @@ class Settings: ObservableObject {
         accessToken = ""
         solarEntityId = EntityType.solar.defaultEntityId
         batteryEntityId = EntityType.battery.defaultEntityId
+        carPowerEntityId = EntityType.carPower.defaultEntityId
         batteryChargingEntityId = EntityType.batteryCharging.defaultEntityId
         batteryDischargingEntityId = EntityType.batteryDischarging.defaultEntityId
         gridUsageEntityId = EntityType.gridUsage.defaultEntityId

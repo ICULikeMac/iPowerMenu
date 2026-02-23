@@ -2,57 +2,51 @@ import XCTest
 @testable import HomeAssistantMenuBar
 
 final class PowerFlowMathTests: XCTestCase {
-    func testHomeDemandIsSplitProportionallyBetweenBatteryAndGridAfterSolar() {
+    func testHomeDemandIsSplitAcrossSolarBatteryCarAndGridWithoutPriority() {
         let routes = PowerFlowMath.calculateRoutes(
-            solarGeneration: 600,
+            solarGeneration: 300,
             gridPower: 500,
             batteryPower: -300,
+            carPower: -200,
             homeDemand: 1200,
             minimumRenderableWatts: 0
         )
 
-        XCTAssertEqual(routeWatts(routes, from: .solar, to: .home), 600, accuracy: 0.001)
-        XCTAssertEqual(routeWatts(routes, from: .battery, to: .home), 225, accuracy: 0.001)
-        XCTAssertEqual(routeWatts(routes, from: .grid, to: .home), 375, accuracy: 0.001)
+        XCTAssertEqual(routeWatts(routes, from: .solar, to: .home), 276.923, accuracy: 0.01)
+        XCTAssertEqual(routeWatts(routes, from: .battery, to: .home), 276.923, accuracy: 0.01)
+        XCTAssertEqual(routeWatts(routes, from: .car, to: .home), 184.615, accuracy: 0.01)
+        XCTAssertEqual(routeWatts(routes, from: .grid, to: .home), 461.538, accuracy: 0.01)
     }
 
-    func testBatteryChargingUsesSolarExcessThenGridImport() {
+    func testBatteryAndCarChargingSplitProportionallyFromAvailableSources() {
         let routes = PowerFlowMath.calculateRoutes(
-            solarGeneration: 1000,
-            gridPower: 200,
+            solarGeneration: 600,
+            gridPower: 500,
             batteryPower: 300,
+            carPower: 200,
             homeDemand: 600,
             minimumRenderableWatts: 0
         )
 
-        XCTAssertEqual(routeWatts(routes, from: .solar, to: .battery), 300, accuracy: 0.001)
-        XCTAssertEqual(routeWatts(routes, from: .grid, to: .battery), 0, accuracy: 0.001)
+        XCTAssertEqual(routeWatts(routes, from: .solar, to: .battery), 163.636, accuracy: 0.01)
+        XCTAssertEqual(routeWatts(routes, from: .grid, to: .battery), 136.364, accuracy: 0.01)
+        XCTAssertEqual(routeWatts(routes, from: .solar, to: .car), 109.091, accuracy: 0.01)
+        XCTAssertEqual(routeWatts(routes, from: .grid, to: .car), 90.909, accuracy: 0.01)
     }
 
-    func testGridCoversBatteryChargingRemainderWhenSolarExcessInsufficient() {
-        let routes = PowerFlowMath.calculateRoutes(
-            solarGeneration: 700,
-            gridPower: 400,
-            batteryPower: 300,
-            homeDemand: 600,
-            minimumRenderableWatts: 0
-        )
-
-        XCTAssertEqual(routeWatts(routes, from: .solar, to: .battery), 100, accuracy: 0.001)
-        XCTAssertEqual(routeWatts(routes, from: .grid, to: .battery), 200, accuracy: 0.001)
-    }
-
-    func testExportIsSplitProportionallyByAvailableSolarAndBatteryExcess() {
+    func testExportIsSplitProportionallyByAvailableSolarBatteryAndCarExcess() {
         let routes = PowerFlowMath.calculateRoutes(
             solarGeneration: 500,
-            gridPower: -300,
-            batteryPower: -200,
-            homeDemand: 100,
+            gridPower: -500,
+            batteryPower: -300,
+            carPower: -200,
+            homeDemand: 200,
             minimumRenderableWatts: 0
         )
 
-        XCTAssertEqual(routeWatts(routes, from: .solar, to: .grid), 200, accuracy: 0.001)
-        XCTAssertEqual(routeWatts(routes, from: .battery, to: .grid), 100, accuracy: 0.001)
+        XCTAssertEqual(routeWatts(routes, from: .solar, to: .grid), 250, accuracy: 0.01)
+        XCTAssertEqual(routeWatts(routes, from: .battery, to: .grid), 150, accuracy: 0.01)
+        XCTAssertEqual(routeWatts(routes, from: .car, to: .grid), 100, accuracy: 0.01)
     }
 
     func testRoutesAtOrBelowThresholdAreNotRendered() {
@@ -60,6 +54,7 @@ final class PowerFlowMathTests: XCTestCase {
             solarGeneration: 21,
             gridPower: 0,
             batteryPower: 0,
+            carPower: 0,
             homeDemand: 21,
             minimumRenderableWatts: 20
         )
@@ -69,6 +64,7 @@ final class PowerFlowMathTests: XCTestCase {
             solarGeneration: 20,
             gridPower: 0,
             batteryPower: 0,
+            carPower: 0,
             homeDemand: 20,
             minimumRenderableWatts: 20
         )
