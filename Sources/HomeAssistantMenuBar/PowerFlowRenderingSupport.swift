@@ -7,14 +7,43 @@ struct PowerFlowLayout {
     let curveScale: CGFloat
     let minCurve: CGFloat
     let maxCurve: CGFloat
+    let centerYOffset: CGFloat
+    /// Vertical offset from the VStack center (set by .position()) to the actual circle center.
+    /// Negative because the circle sits at the top of the VStack, above center.
+    let circleCenterYOffset: CGFloat
+
+    init(
+        size: CGSize,
+        circleRadius: CGFloat,
+        padding: CGFloat,
+        curveScale: CGFloat,
+        minCurve: CGFloat,
+        maxCurve: CGFloat,
+        centerYOffset: CGFloat = 0,
+        circleCenterYOffset: CGFloat = 0
+    ) {
+        self.size = size
+        self.circleRadius = circleRadius
+        self.padding = padding
+        self.curveScale = curveScale
+        self.minCurve = minCurve
+        self.maxCurve = maxCurve
+        self.centerYOffset = centerYOffset
+        self.circleCenterYOffset = circleCenterYOffset
+    }
 
     var nodeCenters: [PowerFlowNode: CGPoint] {
-        [
-            .solar: CGPoint(x: size.width * 0.5, y: size.height * 0.2),
-            .grid: CGPoint(x: size.width * 0.2, y: size.height * 0.5),
-            .home: CGPoint(x: size.width * 0.8, y: size.height * 0.5),
-            .battery: CGPoint(x: size.width * 0.5, y: size.height * 0.8)
+        let dy = circleCenterYOffset
+        return [
+            .solar: CGPoint(x: size.width * 0.5, y: size.height * 0.2 + dy),
+            .grid: CGPoint(x: size.width * 0.2, y: size.height * 0.5 + dy),
+            .home: CGPoint(x: size.width * 0.8, y: size.height * 0.5 + dy),
+            .battery: CGPoint(x: size.width * 0.5, y: size.height * 0.8 + dy)
         ]
+    }
+
+    var center: CGPoint {
+        CGPoint(x: size.width * 0.5, y: size.height * 0.5)
     }
 
     var visibleEdges: [(PowerFlowNode, PowerFlowNode)] {
@@ -35,7 +64,32 @@ struct PowerFlowSegment {
     let control: CGPoint?
 }
 
+// MARK: - Edge Classification
+
+private enum EdgeType {
+    case centerVertical
+    case centerHorizontal
+    case diagonal
+}
+
+private func classifyEdge(from: PowerFlowNode, to: PowerFlowNode) -> EdgeType {
+    let pair: Set<PowerFlowNode> = [from, to]
+    if pair == [.solar, .battery] {
+        return .centerVertical
+    } else if pair == [.grid, .home] {
+        return .centerHorizontal
+    } else {
+        return .diagonal
+    }
+}
+
+// MARK: - Path Builder
+
 enum PowerFlowPathBuilder {
+
+    /// Single shared geometry model for both scaffold connectors and animated flow dots.
+    /// All connector endpoints land on the circle's true edge, aimed toward the connected node.
+    /// Center routes are straight; diagonal routes curve smoothly outward from the layout center.
     static func segment(
         in layout: PowerFlowLayout,
         from: PowerFlowNode,
@@ -49,99 +103,94 @@ enum PowerFlowPathBuilder {
             return nil
         }
 
-        let start = adjustPointForCircle(fromCenter, towards: toCenter, layout: layout)
-        let end = adjustPointForCircle(toCenter, towards: fromCenter, layout: layout)
+        let edgeType = classifyEdge(from: from, to: to)
 
-        let dx = abs(end.x - start.x)
-        let dy = abs(end.y - start.y)
-        let shouldCurve = dx > 8 && dy > 8
-
-        guard shouldCurve else {
+        switch edgeType {
+        case .centerVertical:
+            // Solar <-> Battery: straight vertical line
+            let start = circleEdgePoint(fromCenter, toward: toCenter, layout: layout)
+            let end = circleEdgePoint(toCenter, toward: fromCenter, layout: layout)
             return PowerFlowSegment(start: start, end: end, control: nil)
+
+        case .centerHorizontal:
+            // Grid <-> Home: straight line, elevated by centerYOffset
+            let yOff = layout.centerYOffset
+            let aimFrom = CGPoint(x: toCenter.x, y: toCenter.y + yOff)
+            let aimTo = CGPoint(x: fromCenter.x, y: fromCenter.y + yOff)
+            let start = circleEdgePoint(fromCenter, toward: aimFrom, layout: layout)
+            let end = circleEdgePoint(toCenter, toward: aimTo, layout: layout)
+            return PowerFlowSegment(start: start, end: end, control: nil)
+
+        case .diagonal:
+            // Outer routes: smooth curve bowing away from layout center
+            let start = circleEdgePoint(fromCenter, toward: toCenter, layout: layout)
+            let end = circleEdgePoint(toCenter, toward: fromCenter, layout: layout)
+            let control = outwardControlPoint(
+                start: start, end: end,
+                layoutCenter: layout.center,
+                layout: layout
+            )
+            return PowerFlowSegment(start: start, end: end, control: control)
         }
-
-        let control = curveControlPoint(start: start, end: end, layout: layout)
-        return PowerFlowSegment(start: start, end: end, control: control)
     }
 
+    /// Draw all scaffold connectors as a single Path.
     static func drawDottedVisibleEdges(path: inout Path, layout: PowerFlowLayout) {
-        drawDottedVisibleEdges(path: &path, layout: layout, centerYOffset: 0)
-    }
-
-    static func drawDottedVisibleEdges(path: inout Path, layout: PowerFlowLayout, centerYOffset: CGFloat) {
         for (from, to) in layout.visibleEdges {
-            guard let segment = scaffoldSegment(in: layout, from: from, to: to, centerYOffset: centerYOffset) else { continue }
-            path.move(to: segment.start)
-            if let control = segment.control {
-                path.addQuadCurve(to: segment.end, control: control)
+            guard let seg = segment(in: layout, from: from, to: to) else { continue }
+            path.move(to: seg.start)
+            if let control = seg.control {
+                path.addQuadCurve(to: seg.end, control: control)
             } else {
-                path.addLine(to: segment.end)
+                path.addLine(to: seg.end)
             }
         }
     }
 
-    static func scaffoldSegment(
-        in layout: PowerFlowLayout,
-        from: PowerFlowNode,
-        to: PowerFlowNode,
-        centerYOffset: CGFloat
-    ) -> PowerFlowSegment? {
-        guard
-            from != to,
-            let fromCenter = layout.nodeCenters[from],
-            let toCenter = layout.nodeCenters[to]
-        else {
-            return nil
-        }
+    // MARK: - Private Geometry Helpers
 
-        let isCenterHorizontal = (from == .grid && to == .home) || (from == .home && to == .grid)
-        let shiftedTargetFrom = CGPoint(x: toCenter.x, y: toCenter.y + (isCenterHorizontal ? centerYOffset : 0))
-        let shiftedTargetTo = CGPoint(x: fromCenter.x, y: fromCenter.y + (isCenterHorizontal ? centerYOffset : 0))
-
-        let start = adjustPointForCircle(fromCenter, towards: shiftedTargetFrom, layout: layout)
-        let end = adjustPointForCircle(toCenter, towards: shiftedTargetTo, layout: layout)
-
-        let dx = abs(end.x - start.x)
-        let dy = abs(end.y - start.y)
-        let shouldCurve = dx > 8 && dy > 8
-
-        guard shouldCurve else {
-            return PowerFlowSegment(start: start, end: end, control: nil)
-        }
-
-        let control = curveControlPoint(start: start, end: end, layout: layout)
-        return PowerFlowSegment(start: start, end: end, control: control)
-    }
-
-    private static func adjustPointForCircle(_ point: CGPoint, towards target: CGPoint, layout: PowerFlowLayout) -> CGPoint {
-        let dx = target.x - point.x
-        let dy = target.y - point.y
+    /// Returns the point on a circle's edge closest to the target direction.
+    private static func circleEdgePoint(
+        _ center: CGPoint,
+        toward target: CGPoint,
+        layout: PowerFlowLayout
+    ) -> CGPoint {
+        let dx = target.x - center.x
+        let dy = target.y - center.y
         let distance = sqrt(dx * dx + dy * dy)
+        guard distance > 0 else { return center }
 
-        guard distance > 0 else { return point }
-
-        let unitX = dx / distance
-        let unitY = dy / distance
         let effectiveRadius = layout.circleRadius + layout.padding
-
         return CGPoint(
-            x: point.x + unitX * effectiveRadius,
-            y: point.y + unitY * effectiveRadius
+            x: center.x + (dx / distance) * effectiveRadius,
+            y: center.y + (dy / distance) * effectiveRadius
         )
     }
 
-    private static func curveControlPoint(start: CGPoint, end: CGPoint, layout: PowerFlowLayout) -> CGPoint {
+    /// Computes a quadratic Bezier control point that bows the curve away from the layout center.
+    private static func outwardControlPoint(
+        start: CGPoint,
+        end: CGPoint,
+        layoutCenter: CGPoint,
+        layout: PowerFlowLayout
+    ) -> CGPoint {
         let distance = sqrt(pow(end.x - start.x, 2) + pow(end.y - start.y, 2))
         let curveIntensity = min(layout.maxCurve, max(layout.minCurve, distance * layout.curveScale))
 
         let angle = atan2(end.y - start.y, end.x - start.x)
-        let perpendicularAngle = angle + .pi / 2
         let midX = (start.x + end.x) / 2
         let midY = (start.y + end.y) / 2
 
+        // Pick the perpendicular direction that points toward the layout center
+        let perp1 = angle + .pi / 2
+        let inwardX = layoutCenter.x - midX
+        let inwardY = layoutCenter.y - midY
+        let dot = inwardX * cos(perp1) + inwardY * sin(perp1)
+        let perpAngle = dot >= 0 ? perp1 : angle - .pi / 2
+
         return CGPoint(
-            x: midX + cos(perpendicularAngle) * curveIntensity,
-            y: midY + sin(perpendicularAngle) * curveIntensity
+            x: midX + cos(perpAngle) * curveIntensity,
+            y: midY + sin(perpAngle) * curveIntensity
         )
     }
 }

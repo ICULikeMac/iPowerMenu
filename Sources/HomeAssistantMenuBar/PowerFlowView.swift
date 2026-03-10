@@ -312,11 +312,12 @@ struct PowerFlowConnections: View {
     private var layout: PowerFlowLayout {
         PowerFlowLayout(
             size: size,
-            circleRadius: 50,
+            circleRadius: 40,
             padding: 0,
-            curveScale: 0.15,
-            minCurve: 20,
-            maxCurve: 50
+            curveScale: 0.35,
+            minCurve: 25,
+            maxCurve: 60,
+            circleCenterYOffset: -23
         )
     }
 
@@ -337,7 +338,7 @@ struct DottedConnectionLines: View {
 
     var body: some View {
         Path { path in
-            PowerFlowPathBuilder.drawDottedVisibleEdges(path: &path, layout: layout, centerYOffset: -14)
+            PowerFlowPathBuilder.drawDottedVisibleEdges(path: &path, layout: layout)
         }
         .stroke(
             Color.gray.opacity(0.22),
