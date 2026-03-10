@@ -329,8 +329,8 @@ struct CompactDottedConnectionLines: View {
             PowerFlowPathBuilder.drawDottedVisibleEdges(path: &path, layout: layout)
         }
         .stroke(
-            Color.gray.opacity(0.2),
-            style: StrokeStyle(lineWidth: 0.8, lineCap: .round, dash: [2, 5])
+            Color.gray.opacity(0.4),
+            style: StrokeStyle(lineWidth: 1.2, lineCap: .round, dash: [3, 4])
         )
     }
 }
